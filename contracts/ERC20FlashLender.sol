@@ -302,7 +302,7 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         // Verify loan + fees were repaid
         uint256 balanceAfter = IERC20(token).balanceOf(address(this));
 
-        require(balanceAfter >= balanceBefore + totalFee, "Flash loan not repaid");
+        require(balanceAfter >= balanceBefore + amount + totalFee, "Flash loan not repaid");
 
         // Distribute fees: management fee to owner, LP fee increases pool value
         collectedManagementFees[token] += mgmtFee;

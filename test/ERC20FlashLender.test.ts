@@ -286,12 +286,6 @@ describe("ERC20FlashLender", function () {
       const totalFee = lpFee + mgmtFee;
       const totalOwed = loanAmount + totalFee;
       
-      console.log("Receiver balance:", ethers.formatEther(receiverBalance));
-      console.log("Loan amount:", ethers.formatEther(loanAmount));
-      console.log("Total fee:", ethers.formatEther(totalFee));
-      console.log("Total owed:", ethers.formatEther(totalOwed));
-      console.log("Has enough?", receiverBalance >= totalOwed);
-      
       await expect(lender.connect(user2).flashLoan(
         await token.getAddress(),
         loanAmount,
@@ -531,6 +525,86 @@ describe("ERC20FlashLender", function () {
       
       await expect(lender.connect(user1).setLPFee(await token.getAddress(), 5))
         .to.be.revertedWithCustomError(lender, "OwnableUnauthorizedAccount");
+    });
+
+    it("Should reject flash loan when only fee is repaid (not principal)", async function () {
+      const { lender, token, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Add liquidity for flash loans
+      const depositAmount = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), depositAmount);
+      await lender.connect(user1).deposit(await token.getAddress(), depositAmount);
+      
+      const loanAmount = ethers.parseEther("100");
+      
+      // Deploy malicious flash loan receiver that only repays the fee
+      const MaliciousReceiver = await ethers.getContractFactory("MaliciousReceiver");
+      const maliciousReceiver = await MaliciousReceiver.deploy();
+      await maliciousReceiver.waitForDeployment();
+      
+      // Fund malicious receiver with just enough for the fee (not principal)
+      // LP fee = 100 ETH * 1 basis point = 0.01 ETH
+      // Management fee = 0.01 ETH * 1% = 0.0001 ETH  
+      // Total fee = 0.0101 ETH
+      const estimatedFee = ethers.parseEther("0.0101");
+      await token.connect(user2).transfer(await maliciousReceiver.getAddress(), estimatedFee);
+      
+      // Flash loan should fail because only fee is repaid, not principal
+      await expect(lender.connect(user2).flashLoan(
+        await token.getAddress(),
+        loanAmount,
+        await maliciousReceiver.getAddress(),
+        "0x"
+      )).to.be.revertedWith("Flash loan not repaid");
+    });
+
+    it("Should validate correct balance changes after flash loan", async function () {
+      const { lender, token, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Add liquidity for flash loans
+      const depositAmount = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), depositAmount);
+      await lender.connect(user1).deposit(await token.getAddress(), depositAmount);
+      
+      const loanAmount = ethers.parseEther("100");
+      
+      // Deploy valid flash loan receiver
+      const ValidReceiver = await ethers.getContractFactory("ValidReceiver");
+      const validReceiver = await ValidReceiver.deploy();
+      await validReceiver.waitForDeployment();
+      
+      // Fund receiver with enough for principal + fee
+      await token.connect(user2).transfer(await validReceiver.getAddress(), ethers.parseEther("101"));
+      
+      // Record contract balance before flash loan
+      const balanceBeforeFlashLoan = await token.balanceOf(await lender.getAddress());
+      
+      // Execute flash loan
+      await lender.connect(user2).flashLoan(
+        await token.getAddress(),
+        loanAmount,
+        await validReceiver.getAddress(),
+        "0x"
+      );
+      
+      // Check that contract balance increased by exactly the fee amount
+      const balanceAfterFlashLoan = await token.balanceOf(await lender.getAddress());
+      const actualFeeCollected = balanceAfterFlashLoan - balanceBeforeFlashLoan;
+      
+      // LP fee = 100 ETH * 1 basis point = 0.01 ETH
+      // Management fee = 0.01 ETH * 1% = 0.0001 ETH
+      // But management fee has precision issues, so let's calculate actual values
+      const expectedLPFee = (loanAmount * 1n) / 10000n; // 1 basis point
+      const expectedMgmtFee = (expectedLPFee * 100n) / 10000n; // 1% of LP fee  
+      const expectedTotalFee = expectedLPFee + expectedMgmtFee;
+      
+      // The fee collected should match our calculation
+      expect(actualFeeCollected).to.equal(expectedTotalFee);
+      
+      // Verify the new balance is exactly the deposit + LP fee
+      // (management fee is tracked separately)
+      const expectedNewLiquidity = depositAmount + expectedLPFee;
+      expect(await lender.totalLiquidity(await token.getAddress())).to.equal(expectedNewLiquidity);
     });
   });
 });
