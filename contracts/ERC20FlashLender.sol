@@ -123,7 +123,15 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     
     /// @notice Minimum deposit amount required to prevent share manipulation attacks
     /// @dev Prevents attackers from inflating share prices with tiny deposits
-    uint256 public constant MINIMUM_DEPOSIT = 1000;
+    uint256 public constant MINIMUM_DEPOSIT = 1e8; // 100M wei minimum
+    
+    /// @notice Virtual shares sent to owner on first deposit to prevent manipulation
+    /// @dev Creates initial share dilution making precision attacks uneconomical
+    uint256 public constant VIRTUAL_SHARES = 1000;
+    
+    /// @notice Entry/exit fee as fixed amount (100 wei) to cover dust attacks
+    /// @dev Applied to deposits and withdrawals to neutralize rounding dust
+    uint256 public constant ENTRY_EXIT_FEE = 100;
     
     /// @notice Delay in blocks before proposed fee change can be executed
     uint256 public constant PROPOSAL_DELAY = 10;
@@ -319,56 +327,67 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
      * @param token Address of the ERC20 token to deposit
      * @param amount Number of tokens to deposit (must be >= MINIMUM_DEPOSIT)
      * @dev Mints shares proportional to the deposit's value relative to existing pool
-     *      First depositor gets 1:1 share ratio, subsequent depositors maintain pool value
+     *      First depositor triggers virtual share creation to prevent manipulation
+     *      Entry fee is applied to discourage dust attacks
      */
     function deposit(address token, uint256 amount) external nonReentrant {
         // Checks
         require(token != address(0), "Invalid token");
         require(amount >= MINIMUM_DEPOSIT, "Deposit too small");
         
+        // Apply entry fee to cover dust attacks (fixed amount)
+        uint256 netAmount = amount - ENTRY_EXIT_FEE;
+        require(netAmount > 0, "Amount too small after ENTRY_EXIT_FEE fee");
+        
         // Calculate shares based on current pool state
         uint256 newShares;
-        if (totalShares[token] == 0) {
-            // First deposit: 1:1 ratio (shares = tokens)
-            newShares = amount;
+        bool isFirstDeposit = totalShares[token] == 0;
+        
+        if (isFirstDeposit) {
+            // First deposit: create virtual shares for owner to prevent manipulation
+            // User gets shares for net amount, owner gets virtual shares
+            newShares = netAmount;
+            
+            // Mint virtual shares to owner (contract owner)
+            shares[token][owner()] = VIRTUAL_SHARES;
+            totalShares[token] = VIRTUAL_SHARES;
+            
+            // Add virtual liquidity equivalent (no actual tokens, just accounting)
+            totalLiquidity[token] = VIRTUAL_SHARES;
         } else {
             // Subsequent deposits: maintain proportional value
-            // newShares = (deposit_amount * existing_shares) / existing_liquidity
             require(totalLiquidity[token] > 0, "Invalid liquidity state");
             
-            // Add precision check: ensure calculation doesn't result in zero shares for valid deposits
-            uint256 numerator = amount * totalShares[token];
+            // Calculate shares with precision protection
+            uint256 numerator = netAmount * totalShares[token];
             newShares = numerator / totalLiquidity[token];
             
-            // Prevent share dilution attacks: ensure minimum shares for minimum deposits
-            if (newShares == 0 && amount >= MINIMUM_DEPOSIT) {
-                newShares = 1; // Minimum 1 share for valid deposits
-            }
-            
+            // Require meaningful share allocation (no forced 1 share)
             require(newShares > 0, "Deposit too small for current pool size");
         }
         
         // Update state - track deposits, shares, and total pool size
-        deposits[token][msg.sender] += amount;
+        deposits[token][msg.sender] += netAmount; // Track net deposit (after fee)
         shares[token][msg.sender] += newShares;
         totalShares[token] += newShares;
-        totalLiquidity[token] += amount;
+        totalLiquidity[token] += amount; // Add full amount to liquidity (entry fee stays in pool)
         
         // Update governance vote weight if user has voted
         _updateVoteWeight(token, msg.sender, newShares, true);
         
-        // Emit event
-        emit Deposit(msg.sender, token, amount, newShares);
+        // Emit event with net shares (after fee impact)
+        emit Deposit(msg.sender, token, netAmount, newShares);
         
-        // External call happens last
+        // External call happens last - transfer full amount (including fee)
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
     }
 
     /**
      * @notice Withdraw all deposited tokens plus accumulated fees from flash loans
      * @param token Address of the ERC20 token to withdraw
-     * @dev Calculates user's share of the pool and transfers both principal and earned fees
-     *      User's payout = (user_shares / total_shares) * total_liquidity
+     * @dev Calculates user's share of the pool and transfers principal and fees minus exit fee
+     *      User's payout = (user_shares / total_shares) * total_liquidity - exit_fee
+     *      Exit fee discourages dust attacks and precision manipulation
      */
     function withdraw(address token) external nonReentrant {
         require(token != address(0), "Invalid token");
@@ -376,39 +395,41 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         require(userShares > 0, "Nothing to withdraw");
         require(totalShares[token] > 0, "Invalid shares state");
         
-        // Calculate total amount including accumulated fees
+        // Calculate total amount including accumulated fees (without rounding up)
         // Formula: user_payout = (user_shares / total_shares) * total_pool_value
-        // Add precision check to prevent rounding to zero
         uint256 numerator = userShares * totalLiquidity[token];
-        uint256 totalAmount = numerator / totalShares[token];
+        uint256 grossAmount = numerator / totalShares[token];
+        // No rounding up - use exact division to prevent favorable rounding exploitation
         
-        // Ensure user doesn't lose value due to rounding down
-        // If there's a remainder, round up to protect user funds
-        if (numerator % totalShares[token] > 0) {
-            totalAmount += 1;
-        }
+        // Apply exit fee to cover dust attacks (fixed amount)
+        uint256 netAmount = grossAmount - ENTRY_EXIT_FEE;
         
+        // Ensure minimum withdrawal amount after fees
+        require(netAmount >= MINIMUM_DEPOSIT, "Withdrawal too small after ENTRY_EXIT_FEE fee");
+
         // Cap withdrawal at available liquidity to prevent pool drain
-        if (totalAmount > totalLiquidity[token]) {
-            totalAmount = totalLiquidity[token];
+        if (grossAmount > totalLiquidity[token]) {
+            grossAmount = totalLiquidity[token];
+            netAmount = grossAmount - ENTRY_EXIT_FEE;
         }
-        uint256 principal = deposits[token][msg.sender];
-        uint256 fees = totalAmount > principal ? totalAmount - principal : 0;
         
-        // Reset user's position to zero
+        uint256 principal = deposits[token][msg.sender];
+        uint256 fees = grossAmount > principal ? grossAmount - principal : 0;
+        
+        // Update state before external interactions
         deposits[token][msg.sender] = 0;
         shares[token][msg.sender] = 0;
         totalShares[token] -= userShares;
-        totalLiquidity[token] -= totalAmount;
+        totalLiquidity[token] -= netAmount; // Remove only net amount (exit fee stays in pool as dust)
         
         // Update governance vote weight after resetting shares (user now has 0 shares)
         _updateVoteWeight(token, msg.sender, userShares, false);
         
-        // Emit event before external interaction
+        // Emit event before external interaction (showing net amounts)
         emit Withdraw(msg.sender, token, principal, fees);
         
-        // Transfer principal + fees to user
-        IERC20(token).safeTransfer(msg.sender, totalAmount);
+        // Transfer net amount to user (gross amount minus exit fee)
+        IERC20(token).safeTransfer(msg.sender, netAmount);
     }
 
     /**
@@ -504,35 +525,37 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     // ===================== VIEW FUNCTIONS =====================
     
     /**
-     * @notice Preview how much a user can withdraw (principal + accumulated fees)
+     * @notice Preview how much a user can withdraw (principal + accumulated fees - exit fee)
      * @param token Address of the ERC20 token
      * @param user Address of the liquidity provider
-     * @return totalAmount Total withdrawable amount (principal + fees)
+     * @return netAmount Net withdrawable amount after exit fee
+     * @return grossAmount Gross amount before exit fee
      * @return principal Original deposit amount
      * @return fees Accumulated fees earned from flash loans
-     * @dev Useful for frontend interfaces to show expected returns
+     * @return exitFee Exit fee that will be charged
+     * @dev Useful for frontend interfaces to show expected returns accounting for exit fees
      */
-    function getWithdrawableAmount(address token, address user) external view returns (uint256 totalAmount, uint256 principal, uint256 fees) {
+    function getWithdrawableAmount(address token, address user) external view returns (uint256 netAmount, uint256 grossAmount, uint256 principal, uint256 fees, uint256 exitFee) {
         uint256 userShares = shares[token][user];
         if (userShares == 0 || totalShares[token] == 0) {
-            return (0, 0, 0);
+            return (0, 0, 0, 0, 0);
         }
         
-        // Calculate user's proportional share of total pool with precision protection
+        // Calculate user's proportional share of total pool (without rounding up)
         uint256 numerator = userShares * totalLiquidity[token];
-        totalAmount = numerator / totalShares[token];
-        
-        // Round up if there's a remainder to match withdrawal logic
-        if (numerator % totalShares[token] > 0) {
-            totalAmount += 1;
-        }
+        grossAmount = numerator / totalShares[token];
         
         // Cap at available liquidity
-        if (totalAmount > totalLiquidity[token]) {
-            totalAmount = totalLiquidity[token];
+        if (grossAmount > totalLiquidity[token]) {
+            grossAmount = totalLiquidity[token];
         }
+        
+        // Calculate exit fee and net amount
+        exitFee = ENTRY_EXIT_FEE;
+        netAmount = grossAmount - exitFee;
+        
         principal = deposits[token][user];
-        fees = totalAmount > principal ? totalAmount - principal : 0;
+        fees = grossAmount > principal ? grossAmount - principal : 0;
     }
     
     /**
