@@ -314,9 +314,9 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
      *      First depositor gets 1:1 share ratio, subsequent depositors maintain pool value
      */
     function deposit(address token, uint256 amount) external nonReentrant {
+        // Checks
         require(token != address(0), "Invalid token");
         require(amount >= MINIMUM_DEPOSIT, "Deposit too small");
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         
         // Calculate shares based on current pool state
         uint256 newShares;
@@ -340,7 +340,7 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
             require(newShares > 0, "Deposit too small for current pool size");
         }
         
-        // Update state: track deposits, shares, and total pool size
+        // Update state - track deposits, shares, and total pool size
         deposits[token][msg.sender] += amount;
         shares[token][msg.sender] += newShares;
         totalShares[token] += newShares;
@@ -349,7 +349,11 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         // Update governance vote weight if user has voted
         _updateVoteWeight(token, msg.sender, newShares, true);
         
+        // Emit event
         emit Deposit(msg.sender, token, amount, newShares);
+        
+        // External call happens last
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
     }
 
     /**
@@ -392,9 +396,11 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         // Update governance vote weight after resetting shares (user now has 0 shares)
         _updateVoteWeight(token, msg.sender, userShares, false);
         
+        // Emit event before external interaction
+        emit Withdraw(msg.sender, token, principal, fees);
+        
         // Transfer principal + fees to user
         IERC20(token).safeTransfer(msg.sender, totalAmount);
-        emit Withdraw(msg.sender, token, principal, fees);
     }
 
     /**
@@ -407,8 +413,8 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         uint256 fees = collectedManagementFees[token];
         require(fees > 0, "No fees");
         collectedManagementFees[token] = 0;
-        IERC20(token).safeTransfer(owner(), fees);
         emit ManagementFeeWithdrawn(token, fees);
+        IERC20(token).safeTransfer(owner(), fees);
     }
 
     // ===================== FLASH LOAN FUNCTION =====================
