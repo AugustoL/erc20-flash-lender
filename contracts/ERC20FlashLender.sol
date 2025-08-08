@@ -92,6 +92,14 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     /// @notice Accumulated management fees for each token, withdrawable by owner
     mapping(address => uint256) public collectedManagementFees;
 
+    // ===================== STORAGE GAP =====================
+    
+    /// @notice Storage gap for future upgrades
+    /// @dev This gap allows adding new state variables in future upgrades without storage collisions
+    ///      We reserve 50 slots, but since we have 11 state variables above, we use 39 slots
+    ///      (50 - 11 = 39) to maintain exactly 50 storage slots for this contract
+    uint256[39] private __gap;
+
     // ===================== CONSTANTS =====================
     
     /// @notice Default LP fee rate applied to new tokens (0.01% = 1 basis point)
