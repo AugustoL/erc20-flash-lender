@@ -606,5 +606,32 @@ describe("ERC20FlashLender", function () {
       const expectedNewLiquidity = depositAmount + expectedLPFee;
       expect(await lender.totalLiquidity(await token.getAddress())).to.equal(expectedNewLiquidity);
     });
+
+    it("Should revert using gas-heavy receivers", async function () {
+      const { lender, token, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Add liquidity for flash loans
+      const depositAmount = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), depositAmount);
+      await lender.connect(user1).deposit(await token.getAddress(), depositAmount);
+      
+      const loanAmount = ethers.parseEther("100");
+      
+      // Deploy gas exhausting receiver that intentionally exceeds 30k gas in interface probe
+      const GasExhaustingReceiver = await ethers.getContractFactory("GasExhaustingReceiver");
+      const gasExhausting = await GasExhaustingReceiver.deploy();
+      await gasExhausting.waitForDeployment();
+      
+      // Fund receiver with arbitrary tokens (won't reach execution)
+      await token.connect(user2).transfer(await gasExhausting.getAddress(), ethers.parseEther("1"));
+      
+      // Expect revert due to invalid receiver interface (gas exhaustion in detection)
+      await expect(lender.connect(user2).flashLoan(
+        await token.getAddress(),
+        loanAmount,
+        await gasExhausting.getAddress(),
+        "0x"
+      )).to.be.revertedWith("Invalid receiver interface");
+    });
   });
 });

@@ -360,8 +360,8 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
             return supported;
         } catch {
             // Fallback: test if the contract has executeOperation function
-            // We use a gas-limited call to prevent excessive gas consumption
-            try IFlashLoanReceiver(receiver).executeOperation{gas: 500}(address(0), 0, 0, "") {
+            // Use EIP-165 compliant gas limit of 30,000 gas to prevent gas starvation attacks
+            try IFlashLoanReceiver(receiver).executeOperation{gas: 30000}(address(0), 0, 0, "") {
                 return true; 
             } catch {
                 return false;
