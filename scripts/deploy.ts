@@ -15,6 +15,11 @@ async function main() {
     const managementFeePercentage = process.env.INITIAL_MANAGEMENT_FEE_PERCENTAGE ? 
         parseInt(process.env.INITIAL_MANAGEMENT_FEE_PERCENTAGE) : 100; // 1% of LP fee default
 
+    // Validate management fee is within acceptable range (100-500, representing 1%-5%)
+    if (managementFeePercentage < 100 || managementFeePercentage > 500) {
+        throw new Error(`Management fee must be between 100-500 (1%-5%), got ${managementFeePercentage}`);
+    }
+
     console.log("⚙️  Management fee:", managementFeePercentage / 100, "% of LP fee");
 
     // Deploy the contract
@@ -29,9 +34,14 @@ async function main() {
 
     // Initialize the contract
     console.log("\\n🔧 Initializing contract...");
-    const initTx = await lender.initialize(managementFeePercentage);
-    await initTx.wait();
-    console.log("✅ Contract initialized");
+    try {
+        const initTx = await lender.initialize(managementFeePercentage);
+        await initTx.wait();
+        console.log("✅ Contract initialized");
+    } catch (error) {
+        console.error("❌ Initialization failed:", error);
+        throw error;
+    }
 
     // Verify deployment
     console.log("\\n🔍 Verifying deployment...");
@@ -41,13 +51,17 @@ async function main() {
     const maxLpFee = await lender.MAX_LP_FEE_BPS();
     const maxMgmtFee = await lender.MAX_MANAGEMENT_FEE_PERCENTAGE();
     const minDeposit = await lender.MINIMUM_DEPOSIT();
+    const virtualShares = await lender.VIRTUAL_SHARES();
+    const entryExitFee = await lender.ENTRY_EXIT_FEE();
     
     console.log("📊 Contract Configuration:");
     console.log("  - Management Fee:", (deployedManagementFee / 100n).toString(), "% of LP fee");
     console.log("  - Default LP Fee:", defaultLpFee.toString(), "bps (0.01%)");
     console.log("  - Max LP Fee:", maxLpFee.toString(), "bps (1%)");
     console.log("  - Max Management Fee:", (maxMgmtFee / 100n).toString(), "% of LP fee");
-    console.log("  - Minimum Deposit:", minDeposit.toString(), "tokens");
+    console.log("  - Minimum Deposit:", minDeposit.toString(), "wei");
+    console.log("  - Virtual Shares:", virtualShares.toString());
+    console.log("  - Entry/Exit Fee:", entryExitFee.toString(), "wei");
     console.log("  - Owner:", owner);
 
     // Estimate gas for basic operations
@@ -57,8 +71,9 @@ async function main() {
         const depositGas = await lender.deposit.estimateGas(dummyToken, minDeposit);
         console.log("  - Deposit:", depositGas.toString(), "gas");
         
-        const setFeeGas = await lender.setLPFee.estimateGas(dummyToken, 5);
-        console.log("  - Set LP Fee:", setFeeGas.toString(), "gas");
+        // Use voteForLPFee instead of setLPFee (which doesn't exist)
+        const voteGas = await lender.voteForLPFee.estimateGas(dummyToken, 5);
+        console.log("  - Vote for LP Fee:", voteGas.toString(), "gas");
     } catch (error) {
         console.log("  - Could not estimate gas (expected for dummy addresses)");
     }
@@ -66,7 +81,8 @@ async function main() {
     // Contract verification instructions
     if (network !== "hardhat" && network !== "localhost") {
         console.log("\\n📋 Contract Verification:");
-        console.log(`npx hardhat verify --network ${network} ${lenderAddress} ${managementFeePercentage}`);
+        console.log(`npx hardhat verify --network ${network} ${lenderAddress}`);
+        console.log("Note: This contract uses an initializer, no constructor arguments needed");
     }
 
     // Transfer ownership if multisig is provided
@@ -81,12 +97,14 @@ async function main() {
     
     console.log("\\n📝 Next Steps:");
     console.log("1. 🔍 Verify contract on block explorer");
-    console.log("2. 🏦 Fund the contract with initial liquidity");
+    console.log("2. 🏦 Fund the contract with initial liquidity (deposits via deposit() function)");
     console.log("3. 📊 Set up monitoring dashboard");
-    console.log("4. 🛡️  Consider additional security measures:");
+    console.log("4. 🗳️  Configure LP governance (fee voting system is already active)");
+    console.log("5. 🛡️  Consider additional security measures:");
     console.log("   - Time locks for admin functions");
     console.log("   - Multisig for ownership");
-    console.log("   - Emergency pause capabilities");
+    console.log("   - Monitor for precision attack attempts");
+    console.log("   - Set up alerts for unusual deposit/withdrawal patterns");
 
     return {
         lender: lenderAddress,
