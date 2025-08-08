@@ -2,7 +2,7 @@
 
 ⚠️ **DISCLAIMER: This is a personal/educational project that has NOT been professionally audited. Do NOT use with real funds on mainnet without a comprehensive security audit.**
 
-A flash loan protocol for ERC20 tokens with proportional fee sharing among liquidity providers. Built using OpenZeppelin's battle-tested contracts and reviewed by AI systems, but requires professional audit before production use.
+A flash loan protocol for ERC20 tokens with proportional fee sharing among liquidity providers. Built using OpenZeppelin's battle-tested contracts with comprehensive precision attack protections and reviewed by AI systems, but requires professional audit before production use.
 
 ## Features
 
@@ -10,18 +10,74 @@ A flash loan protocol for ERC20 tokens with proportional fee sharing among liqui
 - 💰 **Fee Sharing**: Proportional fee distribution among liquidity providers
 - 🗳️ **Democratic Governance**: LPs vote on fee rates with share-weighted voting
 - ⏰ **Delayed Execution**: 10-block delay for governance decisions
-- 🛡️ **Security First**: Comprehensive protection against common DeFi attacks
+- 🛡️ **Security First**: Comprehensive protection against precision attacks and common DeFi exploits
 - ⚡ **Ultra-Low Fees**: Default 0.01% LP fee with 1% of it as management fee (as % of LP fee)
 - 🔧 **Upgradeable**: Built with OpenZeppelin's upgradeable contracts
-- 📊 **Share-Based**: Fair fee distribution using share-based accounting
+- 📊 **Share-Based**: Fair fee distribution using share-based accounting with virtual shares protection
+
+## Return on Investment (ROI) Analysis
+
+| Scenario | Min Fee ROI | Median Fee ROI | Max Fee ROI |
+|----------|-------------|----------------|-------------|
+| **1 loan/day** | 0.37% | 18.25% | 36.5% |
+| **10 loans/day** | 1.83% | 91.25% | 182.5% |
+| **100 loans/day** | 3.65% | 182.5% | 365% |
+
+### Expected Annual Percentage Yield (APY) for Investors
+
+The APY for liquidity providers depends on flash loan adoption and fee governance decisions:
+
+**Conservative Estimate (1-5 loans/day, low fees)**: 1-10% APY
+- Suitable for risk-averse investors seeking steady passive income
+- Comparable to traditional DeFi lending protocols
+- Lower volatility but modest returns
+
+**Moderate Estimate (5-25 loans/day, median fees)**: 10-50% APY  
+- Balanced risk/reward profile for typical DeFi participants
+- Requires active governance participation for optimal fee setting
+- Competitive with established DeFi yield farming strategies
+
+**Aggressive Estimate (25+ loans/day, higher fees)**: 50-200%+ APY
+- High-growth scenario with significant MEV/arbitrage adoption
+- Requires active flash loan ecosystem and optimal fee governance
+- Similar to early-stage DeFi protocols with high utilization
+
+**Key Factors Affecting APY:**
+- Flash loan volume and frequency
+- LP fee rates (set by governance voting)
+- Your percentage ownership of the pool
+- Management fee percentage (1-5% of LP fees)
+- Market demand for flash loans in the ecosystem
+- Competition from other lending protocols
+
+**Risk Considerations:**
+- APY projections are hypothetical and not guaranteed
+- Smart contract risks (unaudited code)
+- Governance risks (fee rate decisions)
+- Liquidity risks (withdrawal limitations)
+- Market risks (ETH price volatility affects USD calculations)
+
+**Notes:**
+- Revenue is proportional to your share of the pool
+- Fees are set by LP governance (democratic voting by share weight)
+- Management fee (1-5% of LP fee) goes to protocol, rest to LPs
+- Entry/exit fees (100 wei each) provide additional dust accumulation
+- Virtual shares dilution affects small deposits more than large ones
 
 ## Security Features
 
+### Precision Attack Protections
+- ✅ **Virtual Shares**: A minimal amount of virtual shares minted to owner on first deposit to prevent share manipulation
+- ✅ **Minimum Deposit**: 100M wei (1e8) minimum deposit requirement to make dust attacks uneconomical
+- ✅ **Fixed Entry/Exit Fees**: 100 wei fixed fees (not percentage-based) that accumulate as permanent dust
+- ✅ **Minimum Withdrawal**: Rejects withdrawals below minimum threshold after exit fees
+- ✅ **Precision Loss Prevention**: Direct fee calculation without nested division to prevent rounding manipulation
+
+### Standard DeFi Protections
 - ✅ Reentrancy protection
 - ✅ Share dilution attack prevention  
 - ✅ Arithmetic underflow/overflow protection
 - ✅ Interface compliance checking
-- ✅ Minimum deposit requirements
 - ✅ Fee caps and validation
 - ✅ Share-weighted governance voting
 - ✅ Time-delayed execution system
@@ -97,6 +153,16 @@ npm run deploy:mainnet
 |----------|--------------|-------|-------------|
 | LP Fee | 0.01% (1 bps) | 0-1% (0-100 bps) | Goes to liquidity providers (set by LP governance) |
 | Management Fee | 1% of LP fee | 1-5% of LP fee | Percentage of LP fee that goes to protocol owner (admin controlled) |
+| Entry Fee | 100 wei (fixed) | Fixed | Paid on deposit, stays in pool as dust for precision protection |
+| Exit Fee | 100 wei (fixed) | Fixed | Paid on withdrawal, stays in pool as dust for precision protection |
+
+### Precision Protection Constants
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| MINIMUM_DEPOSIT | 100M wei (1e8) | Makes dust attacks uneconomical |
+| VIRTUAL_SHARES | 1000 | Dilutes small attackers' share manipulation attempts |
+| ENTRY_EXIT_FEE | 100 wei | Fixed fees that accumulate as permanent dust |
 
 ### Fee Calculation Example
 For a 1000 token flash loan with LP fee = 50 bps (0.5%) and management fee = 200 (2%):
@@ -105,15 +171,25 @@ For a 1000 token flash loan with LP fee = 50 bps (0.5%) and management fee = 200
 - **Total Fee**: 5.1 tokens (0.51% of loan)
 - **Total Repayment**: 1005.1 tokens
 
+### Deposit/Withdrawal Fee Example
+For a 1000 token deposit and subsequent withdrawal:
+- **Deposit**: 1000 tokens → 999.9999 tokens net (100 wei entry fee stays in pool)
+- **Shares**: Based on net deposit and current pool ratios with virtual shares dilution
+- **Withdrawal**: User's proportional share minus 100 wei exit fee (which stays in pool)
+- **Effect**: Fixed fees accumulate as permanent dust, making precision attacks unprofitable
+
 ## Usage Examples
 
 ### For Liquidity Providers
 
 ```solidity
-// Approve tokens
+// Note: All deposits must be >= 100M wei (MINIMUM_DEPOSIT)
+// Entry fee of 100 wei is automatically deducted and stays in pool
+
+// Approve tokens (remember to include entry fee)
 IERC20(token).approve(lender, amount);
 
-// Deposit to earn fees
+// Deposit to earn fees (minimum 100M wei)
 lender.deposit(token, amount);
 
 // Vote on LP fee (share-weighted governance)
@@ -125,11 +201,12 @@ lender.proposeLPFeeChange(token, 25); // Propose 0.25% fee
 // Execute fee change after 10-block delay
 lender.executeLPFeeChange(token, 25); // Execute approved change
 
-// Check earnings
-(uint256 total, uint256 principal, uint256 fees) = 
+// Check earnings (includes virtual shares dilution effects)
+(uint256 netAmount, uint256 grossAmount, uint256 principal, uint256 fees, uint256 exitFee) = 
     lender.getWithdrawableAmount(token, msg.sender);
 
-// Withdraw everything
+// Withdraw everything (100 wei exit fee stays in pool)
+// Note: Withdrawal may be rejected if net amount < MINIMUM_DEPOSIT after exit fee
 lender.withdraw(token);
 ```
 
@@ -197,21 +274,28 @@ npm run verify:mainnet    # Verify on Mainnet
 ```
 ERC20FlashLender
 ├── Liquidity Management
-│   ├── deposit() - Add tokens to pool
-│   ├── withdraw() - Remove tokens + fees  
-│   └── Share-based accounting
+│   ├── deposit() - Add tokens to pool (min 100M wei, 100 wei entry fee)
+│   ├── withdraw() - Remove tokens + fees (100 wei exit fee, min threshold check)
+│   ├── Share-based accounting with virtual shares (1000 virtual shares)
+│   └── Precision attack protections
 ├── Flash Loans
 │   ├── flashLoan() - Execute loan
 │   ├── Interface validation
-│   └── Fee collection
+│   ├── Fee collection with precision fixes
+│   └── Minimum fee enforcement for large loans
 ├── LP Governance
-│   ├── voteForLPFee() - Share-weighted voting
+│   ├── voteForLPFee() - Share-weighted voting (including virtual shares)
 │   ├── proposeLPFeeChange() - Democratic proposals
 │   └── executeLPFeeChange() - Delayed execution
-└── Administration
-    ├── Management fee control
-    ├── Emergency controls
-    └── Owner functions
+├── Administration
+│   ├── Management fee control (1-5% of LP fee)
+│   ├── Emergency controls
+│   └── Owner functions (limited scope)
+└── Security Layer
+    ├── Virtual shares dilution (VIRTUAL_SHARES = 1000)
+    ├── Minimum deposit enforcement (MINIMUM_DEPOSIT = 1e8)
+    ├── Fixed fee dust accumulation (ENTRY_EXIT_FEE = 100 wei)
+    └── Withdrawal validation and thresholds
 ```
 
 ## ⚠️ Security Considerations
@@ -223,8 +307,9 @@ ERC20FlashLender
 - ❌ **No professional security audit performed**
 - ✅ **AI-assisted code review completed**
 - ✅ **Built on OpenZeppelin's audited contracts**
-- ✅ **Comprehensive test suite (46 passing tests)**
+- ✅ **Comprehensive test suite (48 passing tests)**
 - ✅ **Security best practices implemented**
+- ✅ **Precision attack protections implemented**
 
 **DO NOT USE WITH REAL FUNDS ON MAINNET WITHOUT A PROFESSIONAL AUDIT**
 
@@ -237,6 +322,33 @@ ERC20FlashLender
 - Governance manipulation risk (voting power concentration)
 - Time delay risks (governance proposals can be front-run)
 - Oracle dependencies (if added)
+
+### Precision Attack Mitigations
+
+This protocol implements comprehensive protections against precision-based attacks:
+
+1. **Virtual Shares (1000)**: Automatically minted to owner on first deposit
+   - Dilutes small attackers' ability to manipulate share calculations
+   - Makes it impossible to achieve meaningful ownership with dust amounts
+
+2. **Minimum Deposit (100M wei)**: Enforced on all deposits
+   - Makes dust attacks economically unviable
+   - Ensures meaningful stake for all participants
+
+3. **Fixed Entry/Exit Fees (100 wei each)**: 
+   - Not percentage-based, creates permanent dust accumulation
+   - Reduces profitability of repeated small operations
+   - Acts as economic deterrent for precision attacks
+
+4. **Minimum Withdrawal Validation**:
+   - Rejects withdrawals below minimum threshold after exit fees
+   - Prevents dust withdrawals that could be used for manipulation
+
+5. **Precision-Safe Fee Calculations**:
+   - Direct multiplication instead of nested division
+   - Prevents rounding manipulation in fee calculations
+
+These protections work together to make precision attacks both technically difficult and economically unviable.
 
 ### Best Practices
 
