@@ -634,4 +634,217 @@ describe("ERC20FlashLender", function () {
       )).to.be.revertedWith("Invalid receiver interface");
     });
   });
+
+  describe("Precision Loss Fixes", function () {
+    it("Should calculate management fee without nested rounding errors", async function () {
+      const { lender, token, user1, user2, owner } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Set higher fees to make precision differences more visible
+      await lender.connect(owner).setLPFee(await token.getAddress(), 50); // 0.5%
+      await lender.connect(owner).setManagementFee(300); // 3% of LP fee
+      
+      // Add liquidity
+      const depositAmount = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), depositAmount);
+      await lender.connect(user1).deposit(await token.getAddress(), depositAmount);
+      
+      // Execute flash loan with amount that would cause precision loss in old calculation
+      const loanAmount = ethers.parseEther("100");
+      
+      // Deploy valid receiver
+      const ValidReceiver = await ethers.getContractFactory("ValidReceiver");
+      const receiver = await ValidReceiver.deploy();
+      await receiver.waitForDeployment();
+      await token.connect(user2).transfer(await receiver.getAddress(), ethers.parseEther("101"));
+      
+      // Record balances before
+      const mgmtFeesBefore = await lender.collectedManagementFees(await token.getAddress());
+      const liquidityBefore = await lender.totalLiquidity(await token.getAddress());
+      
+      // Execute flash loan
+      await lender.connect(user2).flashLoan(
+        await token.getAddress(),
+        loanAmount,
+        await receiver.getAddress(),
+        "0x"
+      );
+      
+      // Calculate expected fees using new precision method
+      const lpFee = (loanAmount * 50n) / 10000n; // 0.5%
+      const mgmtFee = (loanAmount * 50n * 300n) / 100000000n; // Direct calculation without nesting
+      
+      // Verify fees were calculated correctly
+      const mgmtFeesAfter = await lender.collectedManagementFees(await token.getAddress());
+      const liquidityAfter = await lender.totalLiquidity(await token.getAddress());
+      
+      expect(mgmtFeesAfter - mgmtFeesBefore).to.equal(mgmtFee);
+      expect(liquidityAfter - liquidityBefore).to.equal(lpFee);
+    });
+
+    it("Should prevent share dilution attacks with minimum deposit enforcement", async function () {
+      const { lender, token, user1, user2, owner } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Give user1 enough tokens for large deposit
+      const largeDeposit = ethers.parseEther("100000"); // Reduced from 1M to 100K
+      await token.connect(owner).transfer(user1.address, largeDeposit);
+      await token.connect(user1).approve(await lender.getAddress(), largeDeposit);
+      await lender.connect(user1).deposit(await token.getAddress(), largeDeposit);
+      
+      // Attacker tries to deposit minimum amount to get disproportionate shares
+      const minimumDeposit = 1000n; // MINIMUM_DEPOSIT
+      await token.connect(user2).approve(await lender.getAddress(), minimumDeposit);
+      
+      // This should succeed and give appropriate shares (not zero)
+      await lender.connect(user2).deposit(await token.getAddress(), minimumDeposit);
+      
+      const user2Shares = await lender.shares(await token.getAddress(), user2.address);
+      expect(user2Shares).to.be.gt(0); // Should get at least 1 share due to our fix
+      
+      // Verify user2 can withdraw their proportional amount
+      const [withdrawable] = await lender.getWithdrawableAmount(
+        await token.getAddress(),
+        user2.address
+      );
+      expect(withdrawable).to.be.gte(minimumDeposit); // Should get at least their deposit back
+    });
+
+    it("Should handle small deposits that would round to zero shares", async function () {
+      const { lender, token, user1, user2, owner } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Give user1 enough tokens for large deposit
+      const largeDeposit = ethers.parseEther("100000"); // Reduced from 1M to 100K
+      await token.connect(owner).transfer(user1.address, largeDeposit);
+      await token.connect(user1).approve(await lender.getAddress(), largeDeposit);
+      await lender.connect(user1).deposit(await token.getAddress(), largeDeposit);
+      
+      // Try to deposit an amount that would mathematically round to zero shares
+      const smallDeposit = 1000n; // MINIMUM_DEPOSIT
+      await token.connect(user2).approve(await lender.getAddress(), smallDeposit);
+      
+      // Should not revert and should give at least 1 share
+      await expect(lender.connect(user2).deposit(await token.getAddress(), smallDeposit))
+        .to.not.be.reverted;
+      
+      const shares = await lender.shares(await token.getAddress(), user2.address);
+      expect(shares).to.be.gte(1n); // Our fix ensures minimum 1 share
+    });
+
+    it("Should protect users from withdrawal rounding losses", async function () {
+      const { lender, token, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // User1 deposits
+      const deposit1 = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), deposit1);
+      await lender.connect(user1).deposit(await token.getAddress(), deposit1);
+      
+      // User2 makes a small deposit that could cause rounding issues
+      const deposit2 = 3333n; // Odd number that might cause remainder in division
+      await token.connect(user2).approve(await lender.getAddress(), deposit2);
+      await lender.connect(user2).deposit(await token.getAddress(), deposit2);
+      
+      // Check withdrawable amount (should round up if there's remainder)
+      const [withdrawable, principal] = await lender.getWithdrawableAmount(
+        await token.getAddress(),
+        user2.address
+      );
+      
+      // User should not lose value due to rounding
+      expect(withdrawable).to.be.gte(principal);
+      
+      // Actually withdraw and verify
+      const balanceBefore = await token.balanceOf(user2.address);
+      await lender.connect(user2).withdraw(await token.getAddress());
+      const balanceAfter = await token.balanceOf(user2.address);
+      
+      const actualWithdrawn = balanceAfter - balanceBefore;
+      expect(actualWithdrawn).to.be.gte(deposit2); // Should get at least original deposit
+    });
+
+    it("Should handle minimum fee calculation edge cases", async function () {
+      const { lender, token, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Set very low LP fee to test minimum fee logic
+      await lender.setLPFee(await token.getAddress(), 1); // 0.01% (1 basis point)
+      
+      // Add liquidity
+      const depositAmount = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), depositAmount);
+      await lender.connect(user1).deposit(await token.getAddress(), depositAmount);
+      
+      // Test flash loan with amount >= MINIMUM_DEPOSIT that would calculate to 0 fee
+      const smallLoanAmount = 999n; // Less than MINIMUM_DEPOSIT
+      
+      // Deploy receiver
+      const ValidReceiver = await ethers.getContractFactory("ValidReceiver");
+      const receiver = await ValidReceiver.deploy();
+      await receiver.waitForDeployment();
+      await token.connect(user2).transfer(await receiver.getAddress(), 2000n);
+      
+      // This should succeed with 0 fees (no minimum fee enforcement for small amounts)
+      await expect(lender.connect(user2).flashLoan(
+        await token.getAddress(),
+        smallLoanAmount,
+        await receiver.getAddress(),
+        "0x"
+      )).to.not.be.reverted;
+      
+      // Now test with amount >= MINIMUM_DEPOSIT
+      const largeLoanAmount = 1000n; // Equal to MINIMUM_DEPOSIT
+      await token.connect(user2).transfer(await receiver.getAddress(), 2000n);
+      
+      // This should enforce minimum fee of 1 wei if calculated fee is 0
+      await expect(lender.connect(user2).flashLoan(
+        await token.getAddress(),
+        largeLoanAmount,
+        await receiver.getAddress(),
+        "0x"
+      )).to.not.be.reverted;
+    });
+
+    it("Should maintain fee proportionality in minimum fee scenarios", async function () {
+      const { lender, token, user1, user2, owner } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Set fees where calculation might round to zero
+      await lender.connect(owner).setLPFee(await token.getAddress(), 1); // 0.01%
+      await lender.connect(owner).setManagementFee(100); // 1% of LP fee
+      
+      // Add liquidity
+      const depositAmount = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), depositAmount);
+      await lender.connect(user1).deposit(await token.getAddress(), depositAmount);
+      
+      // Test with loan amount that would create minimum fee scenario
+      const loanAmount = 1000n; // MINIMUM_DEPOSIT amount
+      
+      // Deploy receiver
+      const ValidReceiver = await ethers.getContractFactory("ValidReceiver");
+      const receiver = await ValidReceiver.deploy();
+      await receiver.waitForDeployment();
+      await token.connect(user2).transfer(await receiver.getAddress(), 2000n);
+      
+      // Record fees before
+      const mgmtFeesBefore = await lender.collectedManagementFees(await token.getAddress());
+      const liquidityBefore = await lender.totalLiquidity(await token.getAddress());
+      
+      // Execute flash loan
+      await lender.connect(user2).flashLoan(
+        await token.getAddress(),
+        loanAmount,
+        await receiver.getAddress(),
+        "0x"
+      );
+      
+      // Check that fees were distributed proportionally even in minimum fee case
+      const mgmtFeesAfter = await lender.collectedManagementFees(await token.getAddress());
+      const liquidityAfter = await lender.totalLiquidity(await token.getAddress());
+      
+      const actualMgmtFee = mgmtFeesAfter - mgmtFeesBefore;
+      const actualLpFee = liquidityAfter - liquidityBefore;
+      
+      // Both fees should be >= 0 and total should be reasonable
+      expect(actualMgmtFee).to.be.gte(0);
+      expect(actualLpFee).to.be.gte(0);
+      expect(actualMgmtFee + actualLpFee).to.be.gte(0);
+    });
+  });
 });

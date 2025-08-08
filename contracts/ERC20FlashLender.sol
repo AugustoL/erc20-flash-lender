@@ -193,7 +193,17 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
             // Subsequent deposits: maintain proportional value
             // newShares = (deposit_amount * existing_shares) / existing_liquidity
             require(totalLiquidity[token] > 0, "Invalid liquidity state");
-            newShares = (amount * totalShares[token]) / totalLiquidity[token];
+            
+            // Add precision check: ensure calculation doesn't result in zero shares for valid deposits
+            uint256 numerator = amount * totalShares[token];
+            newShares = numerator / totalLiquidity[token];
+            
+            // Prevent share dilution attacks: ensure minimum shares for minimum deposits
+            if (newShares == 0 && amount >= MINIMUM_DEPOSIT) {
+                newShares = 1; // Minimum 1 share for valid deposits
+            }
+            
+            require(newShares > 0, "Deposit too small for current pool size");
         }
         
         // Update state: track deposits, shares, and total pool size
@@ -219,7 +229,20 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         
         // Calculate total amount including accumulated fees
         // Formula: user_payout = (user_shares / total_shares) * total_pool_value
-        uint256 totalAmount = (userShares * totalLiquidity[token]) / totalShares[token];
+        // Add precision check to prevent rounding to zero
+        uint256 numerator = userShares * totalLiquidity[token];
+        uint256 totalAmount = numerator / totalShares[token];
+        
+        // Ensure user doesn't lose value due to rounding down
+        // If there's a remainder, round up to protect user funds
+        if (numerator % totalShares[token] > 0) {
+            totalAmount += 1;
+        }
+        
+        // Cap withdrawal at available liquidity to prevent pool drain
+        if (totalAmount > totalLiquidity[token]) {
+            totalAmount = totalLiquidity[token];
+        }
         uint256 principal = deposits[token][msg.sender];
         uint256 fees = totalAmount > principal ? totalAmount - principal : 0;
         
@@ -278,15 +301,28 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         // Calculate fees: LP fee goes to liquidity providers, management fee is % of LP fee
         // Use default LP fee if none set for this token
         uint256 currentLpFee = lpFeesBps[token] == 0 ? DEFAULT_LP_FEE_BPS : lpFeesBps[token];
+        
+        // Fix precision loss: calculate both fees from original amount to avoid nested rounding
+        // LP fee: (amount * currentLpFee) / 10000
+        // Management fee: (amount * currentLpFee * managementFeePercentage) / (10000 * 10000)
         uint256 lpFee = (amount * currentLpFee) / 10000;
-        uint256 mgmtFee = (lpFee * managementFeePercentage) / 10000;
+        uint256 mgmtFee = (amount * currentLpFee * managementFeePercentage) / 100000000; // 10000 * 10000
         uint256 totalFee = lpFee + mgmtFee;
         
-        // Ensure total fee is at least 1 wei to prevent zero fee loans
-        if (totalFee == 0 && amount > 0) {
-            totalFee = 1; // Minimum 1 wei fee
-            lpFee = 1; // Ensure LP gets the minimum fee
-            mgmtFee = 0; // Management fee can be 0 for minimum fee case
+        // Ensure minimum fee to prevent manipulation while maintaining precision
+        // For amounts >= MINIMUM_DEPOSIT, require minimum fee of 1 wei
+        // For smaller amounts, allow zero fees to prevent precision manipulation
+        if (totalFee == 0 && amount >= MINIMUM_DEPOSIT) {
+            // Distribute minimum fee proportionally based on fee rates
+            uint256 totalFeeBps = currentLpFee + (currentLpFee * managementFeePercentage) / 10000;
+            if (totalFeeBps > 0) {
+                lpFee = currentLpFee * 1 / totalFeeBps;
+                mgmtFee = 1 - lpFee;
+            } else {
+                lpFee = 1;
+                mgmtFee = 0;
+            }
+            totalFee = 1;
         }
         uint256 totalRepayment = amount + totalFee;
 
@@ -328,8 +364,19 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
             return (0, 0, 0);
         }
         
-        // Calculate user's proportional share of total pool
-        totalAmount = (userShares * totalLiquidity[token]) / totalShares[token];
+        // Calculate user's proportional share of total pool with precision protection
+        uint256 numerator = userShares * totalLiquidity[token];
+        totalAmount = numerator / totalShares[token];
+        
+        // Round up if there's a remainder to match withdrawal logic
+        if (numerator % totalShares[token] > 0) {
+            totalAmount += 1;
+        }
+        
+        // Cap at available liquidity
+        if (totalAmount > totalLiquidity[token]) {
+            totalAmount = totalLiquidity[token];
+        }
         principal = deposits[token][user];
         fees = totalAmount > principal ? totalAmount - principal : 0;
     }
