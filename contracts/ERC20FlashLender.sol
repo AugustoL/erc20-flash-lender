@@ -218,19 +218,9 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         
         uint256 currentFee = lpFeesBps[token] == 0 ? DEFAULT_LP_FEE_BPS : lpFeesBps[token];
         require(newFeeBps != currentFee, "Fee already set");
+        require(totalShares[token] > 0, "No shares in pool");
         
-        uint256 totalSharesInPool = totalShares[token];
-        require(totalSharesInPool > 0, "No shares in pool");
-        
-        // Get vote counts for both current and proposed fee
-        uint256 currentFeeVotes = lpFeeSharesTotalVotes[token][currentFee];
-        uint256 newFeeVotes = lpFeeSharesTotalVotes[token][newFeeBps];
-        
-        // Calculate support percentages (in basis points for precision)
-        uint256 currentFeeSupport = (currentFeeVotes * 10000) / totalSharesInPool;
-        uint256 newFeeSupport = (newFeeVotes * 10000) / totalSharesInPool;
-        
-        require(newFeeSupport > currentFeeSupport, "Insufficient support for fee change");
+        require(_newFeeHasEnoughSupport(token, newFeeBps), "Insufficient support for fee change");
         
         // Create proposal with execution delay
         uint256 executionBlock = block.number + PROPOSAL_DELAY;
@@ -243,7 +233,7 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
      * @notice Execute a previously proposed fee change
      * @param token Address of the ERC20 token
      * @param newFeeBps The proposed new LP fee in basis points
-     * @dev Can only be executed after the proposal delay has passed
+     * @dev Can only be executed after the proposal delay has passed and if support is still sufficient
      */
     function executeLPFeeChange(address token, uint256 newFeeBps) external {
         require(token != address(0), "Invalid token");
@@ -251,6 +241,9 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         uint256 executionBlock = proposedFeeChanges[token][newFeeBps];
         require(executionBlock > 0, "No proposal exists");
         require(block.number >= executionBlock, "Proposal delay not met");
+        
+        // Re-validate that the proposal still has sufficient support
+        require(_newFeeHasEnoughSupport(token, newFeeBps), "Proposal no longer has sufficient support");
         
         // Clear the proposal
         proposedFeeChanges[token][newFeeBps] = 0;
@@ -262,6 +255,32 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         emit LPFeeChangeExecuted(token, oldFee, newFeeBps);
     }
     
+    /**
+     * @notice Internal function to check if a proposed fee has sufficient support
+     * @param token Address of the ERC20 token
+     * @param newFeeBps Proposed new LP fee in basis points
+     * @return bool True if the new fee has more support than the current fee
+     * @dev Calculates vote support percentages and compares them
+     */
+    function _newFeeHasEnoughSupport(address token, uint256 newFeeBps) internal view returns (bool) {
+        uint256 currentFee = lpFeesBps[token] == 0 ? DEFAULT_LP_FEE_BPS : lpFeesBps[token];
+        uint256 totalSharesInPool = totalShares[token];
+        
+        if (totalSharesInPool == 0) {
+            return false;
+        }
+        
+        // Get vote counts for both current and proposed fee
+        uint256 currentFeeVotes = lpFeeSharesTotalVotes[token][currentFee];
+        uint256 newFeeVotes = lpFeeSharesTotalVotes[token][newFeeBps];
+        
+        // Calculate support percentages (in basis points for precision)
+        uint256 currentFeeSupport = (currentFeeVotes * 10000) / totalSharesInPool;
+        uint256 newFeeSupport = (newFeeVotes * 10000) / totalSharesInPool;
+        
+        return newFeeSupport > currentFeeSupport;
+    }
+
     /**
      * @notice Internal function to update vote weight when user's shares change
      * @param token Address of the ERC20 token
