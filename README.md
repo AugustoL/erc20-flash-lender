@@ -8,6 +8,8 @@ A flash loan protocol for ERC20 tokens with proportional fee sharing among liqui
 
 - 🚀 **Flash Loans**: Instant, uncollateralized loans for MEV operations
 - 💰 **Fee Sharing**: Proportional fee distribution among liquidity providers
+- 🗳️ **Democratic Governance**: LPs vote on fee rates with share-weighted voting
+- ⏰ **Delayed Execution**: 10-block delay for governance decisions
 - 🛡️ **Security First**: Comprehensive protection against common DeFi attacks
 - ⚡ **Ultra-Low Fees**: Default 0.01% LP fee with 1% of it as management fee (as % of LP fee)
 - 🔧 **Upgradeable**: Built with OpenZeppelin's upgradeable contracts
@@ -21,6 +23,9 @@ A flash loan protocol for ERC20 tokens with proportional fee sharing among liqui
 - ✅ Interface compliance checking
 - ✅ Minimum deposit requirements
 - ✅ Fee caps and validation
+- ✅ Share-weighted governance voting
+- ✅ Time-delayed execution system
+- ✅ Proposal validation and cleanup
 
 ## Quick Start
 
@@ -72,9 +77,14 @@ npm run deploy:mainnet
 
 ### Admin Functions
 
-- `setLPFee(token, bps)` - Set LP fee for specific token (0-100 bps)
 - `setManagementFee(percentage)` - Set management fee as % of LP fee (1-5%)
 - `withdrawManagementFees(token)` - Withdraw collected fees
+
+### LP Governance Functions
+
+- `voteForLPFee(token, feeAmountBps)` - Vote for LP fee amount (share-weighted)
+- `proposeLPFeeChange(token, newFeeBps)` - Propose fee change based on governance
+- `executeLPFeeChange(token, newFeeBps)` - Execute approved fee change after delay
 
 ### View Functions
 
@@ -85,8 +95,8 @@ npm run deploy:mainnet
 
 | Fee Type | Default Rate | Range | Description |
 |----------|--------------|-------|-------------|
-| LP Fee | 0.01% (1 bps) | 0-1% (0-100 bps) | Goes to liquidity providers |
-| Management Fee | 1% of LP fee | 1-5% of LP fee | Percentage of LP fee that goes to protocol owner |
+| LP Fee | 0.01% (1 bps) | 0-1% (0-100 bps) | Goes to liquidity providers (set by LP governance) |
+| Management Fee | 1% of LP fee | 1-5% of LP fee | Percentage of LP fee that goes to protocol owner (admin controlled) |
 
 ### Fee Calculation Example
 For a 1000 token flash loan with LP fee = 50 bps (0.5%) and management fee = 200 (2%):
@@ -105,6 +115,15 @@ IERC20(token).approve(lender, amount);
 
 // Deposit to earn fees
 lender.deposit(token, amount);
+
+// Vote on LP fee (share-weighted governance)
+lender.voteForLPFee(token, 25); // Vote for 0.25% fee
+
+// Propose fee change if you have enough support
+lender.proposeLPFeeChange(token, 25); // Propose 0.25% fee
+
+// Execute fee change after 10-block delay
+lender.executeLPFeeChange(token, 25); // Execute approved change
 
 // Check earnings
 (uint256 total, uint256 principal, uint256 fees) = 
@@ -185,8 +204,12 @@ ERC20FlashLender
 │   ├── flashLoan() - Execute loan
 │   ├── Interface validation
 │   └── Fee collection
+├── LP Governance
+│   ├── voteForLPFee() - Share-weighted voting
+│   ├── proposeLPFeeChange() - Democratic proposals
+│   └── executeLPFeeChange() - Delayed execution
 └── Administration
-    ├── Fee management
+    ├── Management fee control
     ├── Emergency controls
     └── Owner functions
 ```
@@ -200,7 +223,7 @@ ERC20FlashLender
 - ❌ **No professional security audit performed**
 - ✅ **AI-assisted code review completed**
 - ✅ **Built on OpenZeppelin's audited contracts**
-- ✅ **Comprehensive test suite (24 passing tests)**
+- ✅ **Comprehensive test suite (46 passing tests)**
 - ✅ **Security best practices implemented**
 
 **DO NOT USE WITH REAL FUNDS ON MAINNET WITHOUT A PROFESSIONAL AUDIT**
@@ -209,8 +232,10 @@ ERC20FlashLender
 
 - **Unaudited code risk** - Primary concern
 - Smart contract risk
-- Admin key risk  
+- Admin key risk (limited to management fees only)  
 - Liquidity risk
+- Governance manipulation risk (voting power concentration)
+- Time delay risks (governance proposals can be front-run)
 - Oracle dependencies (if added)
 
 ### Best Practices
