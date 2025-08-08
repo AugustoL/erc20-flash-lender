@@ -95,7 +95,6 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     // ===================== CONSTANTS =====================
     
     /// @notice Default LP fee rate applied to new tokens (0.01% = 1 basis point)
-    /// @dev Owner can override this on a per-token basis using setLPFee()
     uint256 public constant DEFAULT_LP_FEE_BPS = 1;
     
     /// @notice Maximum management fee percentage that can be set (500 = 5% of LP fee)
@@ -179,19 +178,6 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         emit ManagementFeeChanged(oldFee, percentage);
     }
 
-    /**
-     * @notice Sets the LP fee rate for a specific token (owner only)
-     * @param token Address of the ERC20 token
-     * @param lpFeeBps LP fee in basis points (e.g., 1 = 0.01%, max 100 = 1%)
-     * @dev Management fee is calculated as percentage of LP fee
-     */
-    function setLPFee(address token, uint256 lpFeeBps) external onlyOwner {
-        require(token != address(0), "Invalid token");
-        require(lpFeeBps <= MAX_LP_FEE_BPS, "LP fee too high");
-        uint256 oldFee = lpFeesBps[token];
-        lpFeesBps[token] = lpFeeBps;
-        emit LPFeeChanged(token, oldFee, lpFeeBps);
-    }
 
     // ===================== LP GOVERNANCE FUNCTIONS =====================
     

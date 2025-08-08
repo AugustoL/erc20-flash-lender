@@ -334,26 +334,8 @@ describe("ERC20FlashLender", function () {
   });
 
   describe("Fee Management", function () {
-    it("Should allow owner to set LP fees", async function () {
-      const { lender, token, owner } = await loadFixture(deployERC20FlashLenderFixture);
-      
-      const newFeeBps = 50; // 0.5%
-      
-      await expect(lender.connect(owner).setLPFee(await token.getAddress(), newFeeBps))
-        .to.emit(lender, "LPFeeChanged")
-        .withArgs(await token.getAddress(), 0, newFeeBps);
-      
-      expect(await lender.lpFeesBps(await token.getAddress())).to.equal(newFeeBps);
-    });
-
-    it("Should reject excessive LP fees", async function () {
-      const { lender, token, owner } = await loadFixture(deployERC20FlashLenderFixture);
-      
-      const excessiveFee = 101; // > MAX_LP_FEE_BPS
-      
-      await expect(lender.connect(owner).setLPFee(await token.getAddress(), excessiveFee))
-        .to.be.revertedWith("LP fee too high");
-    });
+    // LP fees are now controlled exclusively through governance system
+    // See "LP Governance" test suite for comprehensive fee setting tests
 
     it("Should allow owner to update management fee", async function () {
       const { lender, owner } = await loadFixture(deployERC20FlashLenderFixture);
@@ -440,13 +422,30 @@ describe("ERC20FlashLender", function () {
     });
 
     it("Should return correct effective LP fee", async function () {
-      const { lender, token } = await loadFixture(deployERC20FlashLenderFixture);
+      const { lender, token, user1 } = await loadFixture(deployERC20FlashLenderFixture);
       
       // Should return default when not set
       expect(await lender.getEffectiveLPFee(await token.getAddress())).to.equal(1);
       
-      // Should return custom fee when set
-      await lender.setLPFee(await token.getAddress(), 50);
+      // Test custom fee set through governance
+      const deposit = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), deposit);
+      await lender.connect(user1).deposit(await token.getAddress(), deposit);
+      
+      // Vote and propose fee change
+      await lender.connect(user1).voteForLPFee(await token.getAddress(), 50);
+      await lender.connect(user1).proposeLPFeeChange(await token.getAddress(), 50);
+      
+      // Still default during delay
+      expect(await lender.getEffectiveLPFee(await token.getAddress())).to.equal(1);
+      
+      // Execute after delay
+      for (let i = 0; i < 10; i++) {
+        await ethers.provider.send("evm_mine", []);
+      }
+      await lender.connect(user1).executeLPFeeChange(await token.getAddress(), 50);
+      
+      // Should return custom fee
       expect(await lender.getEffectiveLPFee(await token.getAddress())).to.equal(50);
     });
   });
@@ -519,12 +518,11 @@ describe("ERC20FlashLender", function () {
     it("Should prevent unauthorized access", async function () {
       const { lender, token, user1 } = await loadFixture(deployERC20FlashLenderFixture);
       
-      // Test that only owner can call owner functions
+      // Test that only owner can call owner functions (management fees only now)
       await expect(lender.connect(user1).setManagementFee(5))
         .to.be.revertedWithCustomError(lender, "OwnableUnauthorizedAccount");
       
-      await expect(lender.connect(user1).setLPFee(await token.getAddress(), 5))
-        .to.be.revertedWithCustomError(lender, "OwnableUnauthorizedAccount");
+      // LP fees are now controlled through governance - no owner control
     });
 
     it("Should reject flash loan when only fee is repaid (not principal)", async function () {
@@ -640,7 +638,6 @@ describe("ERC20FlashLender", function () {
       const { lender, token, user1, user2, owner } = await loadFixture(deployERC20FlashLenderFixture);
       
       // Set higher fees to make precision differences more visible
-      await lender.connect(owner).setLPFee(await token.getAddress(), 50); // 0.5%
       await lender.connect(owner).setManagementFee(300); // 3% of LP fee
       
       // Add liquidity
@@ -669,9 +666,9 @@ describe("ERC20FlashLender", function () {
         "0x"
       );
       
-      // Calculate expected fees using new precision method
-      const lpFee = (loanAmount * 50n) / 10000n; // 0.5%
-      const mgmtFee = (loanAmount * 50n * 300n) / 100000000n; // Direct calculation without nesting
+      // Calculate expected fees using new precision method (using default 1 bps LP fee)
+      const lpFee = (loanAmount * 1n) / 10000n; // 0.01% (default)
+      const mgmtFee = (loanAmount * 1n * 300n) / 100000000n; // Direct calculation without nesting
       
       // Verify fees were calculated correctly
       const mgmtFeesAfter = await lender.collectedManagementFees(await token.getAddress());
@@ -763,8 +760,8 @@ describe("ERC20FlashLender", function () {
     it("Should handle minimum fee calculation edge cases", async function () {
       const { lender, token, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
       
-      // Set very low LP fee to test minimum fee logic
-      await lender.setLPFee(await token.getAddress(), 1); // 0.01% (1 basis point)
+      // Use default LP fee (1 basis point) to test minimum fee logic
+      // No need to set fee as default is already 1 bps
       
       // Add liquidity
       const depositAmount = ethers.parseEther("1000");
@@ -804,8 +801,7 @@ describe("ERC20FlashLender", function () {
     it("Should maintain fee proportionality in minimum fee scenarios", async function () {
       const { lender, token, user1, user2, owner } = await loadFixture(deployERC20FlashLenderFixture);
       
-      // Set fees where calculation might round to zero
-      await lender.connect(owner).setLPFee(await token.getAddress(), 1); // 0.01%
+      // Use default LP fee (1 basis point) where calculation might round to zero
       await lender.connect(owner).setManagementFee(100); // 1% of LP fee
       
       // Add liquidity
