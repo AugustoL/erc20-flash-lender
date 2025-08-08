@@ -57,6 +57,17 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
 
     /// @notice LP fee rate in basis points for each token (e.g., 50 = 0.5%)
     mapping(address => uint256) public lpFeesBps;
+
+    /// @notice Total shares voting for each fee amount for each token
+    // @dev token => feeAmount => sharesVotes
+    mapping(address => mapping(uint256 => uint256)) public lpFeeSharesTotalVotes;
+
+    /// @notice LP's selected fee amount for each token
+    /// @dev token => user => lpFeeAmount selected
+    mapping(address => mapping(address => uint256)) public lpFeeAmountSelected;
+    
+    /// @notice Proposed fee changes: token => feeAmount => executionBlock
+    mapping(address => mapping(uint256 => uint256)) public proposedFeeChanges;
     
     /// @notice Amount of tokens deposited by each user for each token
     /// @dev token => user => deposit amount
@@ -106,6 +117,9 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     /// @notice Minimum deposit amount required to prevent share manipulation attacks
     /// @dev Prevents attackers from inflating share prices with tiny deposits
     uint256 public constant MINIMUM_DEPOSIT = 1000;
+    
+    /// @notice Delay in blocks before proposed fee change can be executed
+    uint256 public constant PROPOSAL_DELAY = 10;
     // ===================== EVENTS =====================
     
     /// @notice Emitted when a user deposits tokens into a liquidity pool
@@ -125,6 +139,15 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     
     /// @notice Emitted when the LP fee rate for a token is changed
     event LPFeeChanged(address indexed token, uint256 oldFee, uint256 newFee);
+    
+    /// @notice Emitted when an LP votes for a fee amount
+    event LPFeeVoteCast(address indexed token, address indexed voter, uint256 feeAmount, uint256 voterShares);
+    
+    /// @notice Emitted when a fee change is proposed
+    event LPFeeChangeProposed(address indexed token, uint256 newFeeBps, uint256 executionBlock);
+    
+    /// @notice Emitted when a proposed fee change is executed
+    event LPFeeChangeExecuted(address indexed token, uint256 oldFee, uint256 newFee);
 
     // ===================== INITIALIZATION =====================
     
@@ -170,6 +193,115 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         emit LPFeeChanged(token, oldFee, lpFeeBps);
     }
 
+    // ===================== LP GOVERNANCE FUNCTIONS =====================
+    
+    /**
+     * @notice Cast a vote for the LP fee amount for a specific token
+     * @param token Address of the ERC20 token
+     * @param feeAmountBps Desired LP fee in basis points (e.g., 1 = 0.01%, max 100 = 1%)
+     * @dev LP votes are weighted by their share holdings. Previous vote is replaced if exists.
+     *      Only LPs with shares can vote.
+     */
+    function voteForLPFee(address token, uint256 feeAmountBps) external {
+        require(token != address(0), "Invalid token");
+        require(feeAmountBps <= MAX_LP_FEE_BPS, "Fee amount too high");
+        
+        uint256 voterShares = shares[token][msg.sender];
+        require(voterShares > 0, "No shares to vote");
+        
+        // Remove previous vote if exists
+        uint256 previousVote = lpFeeAmountSelected[token][msg.sender];
+        if (previousVote > 0) {
+            lpFeeSharesTotalVotes[token][previousVote] -= voterShares;
+        }
+        
+        // Record new vote
+        lpFeeAmountSelected[token][msg.sender] = feeAmountBps;
+        lpFeeSharesTotalVotes[token][feeAmountBps] += voterShares;
+        
+        emit LPFeeVoteCast(token, msg.sender, feeAmountBps, voterShares);
+    }
+    
+    /**
+     * @notice Propose a change to LP fee based on governance votes
+     * @param token Address of the ERC20 token
+     * @param newFeeBps Proposed new LP fee in basis points
+     * @dev Creates proposal if new fee has higher share support than current fee.
+     *      Proposal can be executed after PROPOSAL_DELAY blocks.
+     */
+    function proposeLPFeeChange(address token, uint256 newFeeBps) external {
+        require(token != address(0), "Invalid token");
+        require(newFeeBps <= MAX_LP_FEE_BPS, "Fee too high");
+        
+        uint256 currentFee = lpFeesBps[token] == 0 ? DEFAULT_LP_FEE_BPS : lpFeesBps[token];
+        require(newFeeBps != currentFee, "Fee already set");
+        
+        uint256 totalSharesInPool = totalShares[token];
+        require(totalSharesInPool > 0, "No shares in pool");
+        
+        // Get vote counts for both current and proposed fee
+        uint256 currentFeeVotes = lpFeeSharesTotalVotes[token][currentFee];
+        uint256 newFeeVotes = lpFeeSharesTotalVotes[token][newFeeBps];
+        
+        // Calculate support percentages (in basis points for precision)
+        uint256 currentFeeSupport = (currentFeeVotes * 10000) / totalSharesInPool;
+        uint256 newFeeSupport = (newFeeVotes * 10000) / totalSharesInPool;
+        
+        require(newFeeSupport > currentFeeSupport, "Insufficient support for fee change");
+        
+        // Create proposal with execution delay
+        uint256 executionBlock = block.number + PROPOSAL_DELAY;
+        proposedFeeChanges[token][newFeeBps] = executionBlock;
+        
+        emit LPFeeChangeProposed(token, newFeeBps, executionBlock);
+    }
+    
+    /**
+     * @notice Execute a previously proposed fee change
+     * @param token Address of the ERC20 token
+     * @param newFeeBps The proposed new LP fee in basis points
+     * @dev Can only be executed after the proposal delay has passed
+     */
+    function executeLPFeeChange(address token, uint256 newFeeBps) external {
+        require(token != address(0), "Invalid token");
+        
+        uint256 executionBlock = proposedFeeChanges[token][newFeeBps];
+        require(executionBlock > 0, "No proposal exists");
+        require(block.number >= executionBlock, "Proposal delay not met");
+        
+        // Clear the proposal
+        proposedFeeChanges[token][newFeeBps] = 0;
+        
+        // Update the LP fee
+        uint256 oldFee = lpFeesBps[token] == 0 ? DEFAULT_LP_FEE_BPS : lpFeesBps[token];
+        lpFeesBps[token] = newFeeBps;
+        
+        emit LPFeeChangeExecuted(token, oldFee, newFeeBps);
+    }
+    
+    /**
+     * @notice Internal function to update vote weight when user's shares change
+     * @param token Address of the ERC20 token
+     * @param user Address of the user whose shares changed
+     * @param shareChange Amount of shares that changed
+     * @param isIncrease True if shares increased (deposit), false if decreased (withdraw)
+     * @dev Updates the vote count for the user's selected fee amount
+     */
+    function _updateVoteWeight(address token, address user, uint256 shareChange, bool isIncrease) internal {
+        uint256 selectedFee = lpFeeAmountSelected[token][user];
+        if (selectedFee > 0) {  // User has voted
+            if (isIncrease) {
+                lpFeeSharesTotalVotes[token][selectedFee] += shareChange;
+            } else {
+                lpFeeSharesTotalVotes[token][selectedFee] -= shareChange;
+                // Clear user's vote selection when they withdraw all shares
+                if (shares[token][user] == 0) {
+                    lpFeeAmountSelected[token][user] = 0;
+                }
+            }
+        }
+    }
+
     // ===================== LIQUIDITY PROVIDER FUNCTIONS =====================
     
     /**
@@ -212,6 +344,9 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         totalShares[token] += newShares;
         totalLiquidity[token] += amount;
         
+        // Update governance vote weight if user has voted
+        _updateVoteWeight(token, msg.sender, newShares, true);
+        
         emit Deposit(msg.sender, token, amount, newShares);
     }
 
@@ -251,6 +386,9 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         shares[token][msg.sender] = 0;
         totalShares[token] -= userShares;
         totalLiquidity[token] -= totalAmount;
+        
+        // Update governance vote weight after resetting shares (user now has 0 shares)
+        _updateVoteWeight(token, msg.sender, userShares, false);
         
         // Transfer principal + fees to user
         IERC20(token).safeTransfer(msg.sender, totalAmount);

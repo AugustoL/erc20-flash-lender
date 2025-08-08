@@ -847,4 +847,322 @@ describe("ERC20FlashLender", function () {
       expect(actualMgmtFee + actualLpFee).to.be.gte(0);
     });
   });
+
+  describe("LP Governance", function () {
+    it("Should allow LPs to vote for fee amounts", async function () {
+      const { lender, token, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Users deposit to get voting power
+      const deposit1 = ethers.parseEther("1000");
+      const deposit2 = ethers.parseEther("500");
+      
+      await token.connect(user1).approve(await lender.getAddress(), deposit1);
+      await lender.connect(user1).deposit(await token.getAddress(), deposit1);
+      
+      await token.connect(user2).approve(await lender.getAddress(), deposit2);
+      await lender.connect(user2).deposit(await token.getAddress(), deposit2);
+      
+      // User1 votes for 50 bps (0.5%) fee
+      await expect(lender.connect(user1).voteForLPFee(await token.getAddress(), 50))
+        .to.emit(lender, "LPFeeVoteCast")
+        .withArgs(await token.getAddress(), user1.address, 50, deposit1);
+      
+      // User2 votes for 25 bps (0.25%) fee
+      await expect(lender.connect(user2).voteForLPFee(await token.getAddress(), 25))
+        .to.emit(lender, "LPFeeVoteCast")
+        .withArgs(await token.getAddress(), user2.address, 25, deposit2);
+      
+      // Check vote tallies
+      expect(await lender.lpFeeSharesTotalVotes(await token.getAddress(), 50)).to.equal(deposit1);
+      expect(await lender.lpFeeSharesTotalVotes(await token.getAddress(), 25)).to.equal(deposit2);
+      expect(await lender.lpFeeAmountSelected(await token.getAddress(), user1.address)).to.equal(50);
+      expect(await lender.lpFeeAmountSelected(await token.getAddress(), user2.address)).to.equal(25);
+    });
+
+    it("Should update votes when users change their voting preference", async function () {
+      const { lender, token, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // User deposits to get voting power
+      const deposit = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), deposit);
+      await lender.connect(user1).deposit(await token.getAddress(), deposit);
+      
+      // User votes for 50 bps initially
+      await lender.connect(user1).voteForLPFee(await token.getAddress(), 50);
+      expect(await lender.lpFeeSharesTotalVotes(await token.getAddress(), 50)).to.equal(deposit);
+      
+      // User changes vote to 25 bps
+      await lender.connect(user1).voteForLPFee(await token.getAddress(), 25);
+      expect(await lender.lpFeeSharesTotalVotes(await token.getAddress(), 50)).to.equal(0); // Previous vote removed
+      expect(await lender.lpFeeSharesTotalVotes(await token.getAddress(), 25)).to.equal(deposit); // New vote added
+      expect(await lender.lpFeeAmountSelected(await token.getAddress(), user1.address)).to.equal(25);
+    });
+
+    it("Should update vote weights when users deposit more shares", async function () {
+      const { lender, token, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Initial deposit and vote
+      const initialDeposit = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), initialDeposit);
+      await lender.connect(user1).deposit(await token.getAddress(), initialDeposit);
+      await lender.connect(user1).voteForLPFee(await token.getAddress(), 50);
+      
+      expect(await lender.lpFeeSharesTotalVotes(await token.getAddress(), 50)).to.equal(initialDeposit);
+      
+      // Additional deposit should increase vote weight
+      const additionalDeposit = ethers.parseEther("500");
+      await token.connect(user1).approve(await lender.getAddress(), additionalDeposit);
+      await lender.connect(user1).deposit(await token.getAddress(), additionalDeposit);
+      
+      const totalDeposit = initialDeposit + additionalDeposit;
+      expect(await lender.lpFeeSharesTotalVotes(await token.getAddress(), 50)).to.equal(totalDeposit);
+    });
+
+    it("Should remove vote weight when user withdraws", async function () {
+      const { lender, token, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Deposit and vote
+      const deposit = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), deposit);
+      await lender.connect(user1).deposit(await token.getAddress(), deposit);
+      await lender.connect(user1).voteForLPFee(await token.getAddress(), 50);
+      
+      expect(await lender.lpFeeSharesTotalVotes(await token.getAddress(), 50)).to.equal(deposit);
+      expect(await lender.lpFeeAmountSelected(await token.getAddress(), user1.address)).to.equal(50);
+      
+      // Withdraw should remove vote weight and clear selection
+      await lender.connect(user1).withdraw(await token.getAddress());
+      
+      expect(await lender.lpFeeSharesTotalVotes(await token.getAddress(), 50)).to.equal(0);
+      expect(await lender.lpFeeAmountSelected(await token.getAddress(), user1.address)).to.equal(0);
+    });
+
+    it("Should propose fee change when new fee has higher support", async function () {
+      const { lender, token, user1, user2, user3 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Set initial fee to 1 bps (current DEFAULT_LP_FEE_BPS)
+      expect(await lender.getEffectiveLPFee(await token.getAddress())).to.equal(1);
+      
+      // Users deposit with different amounts
+      const deposit1 = ethers.parseEther("600"); // 60% of total
+      const deposit2 = ethers.parseEther("300"); // 30% of total  
+      const deposit3 = ethers.parseEther("100"); // 10% of total
+      
+      await token.connect(user1).approve(await lender.getAddress(), deposit1);
+      await lender.connect(user1).deposit(await token.getAddress(), deposit1);
+      
+      await token.connect(user2).approve(await lender.getAddress(), deposit2);
+      await lender.connect(user2).deposit(await token.getAddress(), deposit2);
+      
+      await token.connect(user3).approve(await lender.getAddress(), deposit3);
+      await lender.connect(user3).deposit(await token.getAddress(), deposit3);
+      
+      // User1 and User2 vote for 50 bps (90% support)
+      await lender.connect(user1).voteForLPFee(await token.getAddress(), 50);
+      await lender.connect(user2).voteForLPFee(await token.getAddress(), 50);
+      
+      // User3 votes for current fee of 1 bps (10% support)
+      await lender.connect(user3).voteForLPFee(await token.getAddress(), 1);
+      
+      // Propose the fee change
+      const currentBlock = await ethers.provider.getBlockNumber();
+      await expect(lender.connect(user1).proposeLPFeeChange(await token.getAddress(), 50))
+        .to.emit(lender, "LPFeeChangeProposed")
+        .withArgs(await token.getAddress(), 50, currentBlock + 11); // +1 for the tx itself + 10 delay
+      
+      // Fee should not be changed yet
+      expect(await lender.lpFeesBps(await token.getAddress())).to.equal(0); // Still default
+      
+      // Check proposal exists
+      expect(await lender.proposedFeeChanges(await token.getAddress(), 50)).to.equal(currentBlock + 11);
+      
+      // Mine blocks to meet delay
+      for (let i = 0; i < 10; i++) {
+        await ethers.provider.send("evm_mine", []);
+      }
+      
+      // Execute the proposal
+      await expect(lender.connect(user2).executeLPFeeChange(await token.getAddress(), 50))
+        .to.emit(lender, "LPFeeChangeExecuted")
+        .withArgs(await token.getAddress(), 1, 50);
+      
+      expect(await lender.lpFeesBps(await token.getAddress())).to.equal(50);
+    });
+
+    it("Should reject fee change when new fee has insufficient support", async function () {
+      const { lender, token, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Equal deposits
+      const deposit = ethers.parseEther("500");
+      await token.connect(user1).approve(await lender.getAddress(), deposit);
+      await lender.connect(user1).deposit(await token.getAddress(), deposit);
+      
+      await token.connect(user2).approve(await lender.getAddress(), deposit);
+      await lender.connect(user2).deposit(await token.getAddress(), deposit);
+      
+      // User1 votes for 50 bps, User2 votes for current fee (1 bps)
+      await lender.connect(user1).voteForLPFee(await token.getAddress(), 50);
+      await lender.connect(user2).voteForLPFee(await token.getAddress(), 1);
+      
+      // Equal support means insufficient support for change
+      await expect(lender.connect(user1).proposeLPFeeChange(await token.getAddress(), 50))
+        .to.be.revertedWith("Insufficient support for fee change");
+    });
+
+    it("Should reject votes from users without shares", async function () {
+      const { lender, token, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // User tries to vote without having any shares
+      await expect(lender.connect(user1).voteForLPFee(await token.getAddress(), 50))
+        .to.be.revertedWith("No shares to vote");
+    });
+
+    it("Should reject invalid fee amounts in votes", async function () {
+      const { lender, token, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // User deposits to get voting power
+      const deposit = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), deposit);
+      await lender.connect(user1).deposit(await token.getAddress(), deposit);
+      
+      // Try to vote for fee above maximum
+      await expect(lender.connect(user1).voteForLPFee(await token.getAddress(), 101)) // > MAX_LP_FEE_BPS (100)
+        .to.be.revertedWith("Fee amount too high");
+    });
+
+    it("Should reject fee change proposals with invalid parameters", async function () {
+      const { lender, token, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      const deposit = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), deposit);
+      await lender.connect(user1).deposit(await token.getAddress(), deposit);
+      
+      // Test invalid token address
+      await expect(lender.connect(user1).proposeLPFeeChange(ethers.ZeroAddress, 50))
+        .to.be.revertedWith("Invalid token");
+      
+      // Test fee too high
+      await expect(lender.connect(user1).proposeLPFeeChange(await token.getAddress(), 101))
+        .to.be.revertedWith("Fee too high");
+      
+      // Test same fee as current
+      await expect(lender.connect(user1).proposeLPFeeChange(await token.getAddress(), 1)) // DEFAULT_LP_FEE_BPS
+        .to.be.revertedWith("Fee already set");
+    });
+
+    it("Should reject execution before delay period", async function () {
+      const { lender, token, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Setup voting scenario
+      const deposit1 = ethers.parseEther("600");
+      const deposit2 = ethers.parseEther("400");
+      
+      await token.connect(user1).approve(await lender.getAddress(), deposit1);
+      await lender.connect(user1).deposit(await token.getAddress(), deposit1);
+      
+      await token.connect(user2).approve(await lender.getAddress(), deposit2);
+      await lender.connect(user2).deposit(await token.getAddress(), deposit2);
+      
+      // Vote and propose
+      await lender.connect(user1).voteForLPFee(await token.getAddress(), 50);
+      await lender.connect(user1).proposeLPFeeChange(await token.getAddress(), 50);
+      
+      // Try to execute immediately (should fail)
+      await expect(lender.connect(user1).executeLPFeeChange(await token.getAddress(), 50))
+        .to.be.revertedWith("Proposal delay not met");
+        
+      // Try to execute after partial delay (should still fail)
+      for (let i = 0; i < 5; i++) {
+        await ethers.provider.send("evm_mine", []);
+      }
+      
+      await expect(lender.connect(user1).executeLPFeeChange(await token.getAddress(), 50))
+        .to.be.revertedWith("Proposal delay not met");
+    });
+
+    it("Should reject execution of non-existent proposals", async function () {
+      const { lender, token, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Try to execute a proposal that was never made
+      await expect(lender.connect(user1).executeLPFeeChange(await token.getAddress(), 50))
+        .to.be.revertedWith("No proposal exists");
+    });
+
+    it("Should clear proposal after successful execution", async function () {
+      const { lender, token, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Setup and vote
+      const deposit = ethers.parseEther("1000");
+      await token.connect(user1).approve(await lender.getAddress(), deposit);
+      await lender.connect(user1).deposit(await token.getAddress(), deposit);
+      
+      await lender.connect(user1).voteForLPFee(await token.getAddress(), 50);
+      await lender.connect(user1).proposeLPFeeChange(await token.getAddress(), 50);
+      
+      // Check proposal exists
+      expect(await lender.proposedFeeChanges(await token.getAddress(), 50)).to.be.gt(0);
+      
+      // Execute after delay
+      for (let i = 0; i < 10; i++) {
+        await ethers.provider.send("evm_mine", []);
+      }
+      
+      await lender.connect(user1).executeLPFeeChange(await token.getAddress(), 50);
+      
+      // Check proposal was cleared
+      expect(await lender.proposedFeeChanges(await token.getAddress(), 50)).to.equal(0);
+      
+      // Should not be able to execute again
+      await expect(lender.connect(user1).executeLPFeeChange(await token.getAddress(), 50))
+        .to.be.revertedWith("No proposal exists");
+    });
+
+    it("Should work with complex voting scenarios", async function () {
+      const { lender, token, user1, user2, user3, owner } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Different deposit amounts creating different voting weights
+      const deposit1 = ethers.parseEther("500"); // 50%
+      const deposit2 = ethers.parseEther("300"); // 30%
+      const deposit3 = ethers.parseEther("200"); // 20%
+      
+      await token.connect(user1).approve(await lender.getAddress(), deposit1);
+      await lender.connect(user1).deposit(await token.getAddress(), deposit1);
+      
+      await token.connect(user2).approve(await lender.getAddress(), deposit2);
+      await lender.connect(user2).deposit(await token.getAddress(), deposit2);
+      
+      await token.connect(user3).approve(await lender.getAddress(), deposit3);
+      await lender.connect(user3).deposit(await token.getAddress(), deposit3);
+      
+      // Initial votes: User1 and User2 for 25 bps (80%), User3 for 50 bps (20%)
+      await lender.connect(user1).voteForLPFee(await token.getAddress(), 25);
+      await lender.connect(user2).voteForLPFee(await token.getAddress(), 25);
+      await lender.connect(user3).voteForLPFee(await token.getAddress(), 50);
+      
+      // 25 bps should win with 80% support vs 0% for current (1 bps)
+      await lender.connect(user1).proposeLPFeeChange(await token.getAddress(), 25);
+      
+      // Mine blocks to meet delay
+      for (let i = 0; i < 10; i++) {
+        await ethers.provider.send("evm_mine", []);
+      }
+      
+      await lender.connect(user1).executeLPFeeChange(await token.getAddress(), 25);
+      expect(await lender.lpFeesBps(await token.getAddress())).to.equal(25);
+      
+      // User1 changes vote to 50 bps, now 50 bps has 70% support vs 30% for 25 bps
+      await lender.connect(user1).voteForLPFee(await token.getAddress(), 50);
+      
+      // Should be able to propose change to 50 bps now
+      await lender.connect(user3).proposeLPFeeChange(await token.getAddress(), 50);
+      
+      // Mine blocks and execute
+      for (let i = 0; i < 10; i++) {
+        await ethers.provider.send("evm_mine", []);
+      }
+      
+      await lender.connect(user3).executeLPFeeChange(await token.getAddress(), 50);
+      expect(await lender.lpFeesBps(await token.getAddress())).to.equal(50);
+    });
+  });
 });
