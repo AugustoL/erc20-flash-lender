@@ -136,9 +136,6 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     /// @notice Emitted when the management fee rate is changed
     event ManagementFeeChanged(uint256 oldFee, uint256 newFee);
     
-    /// @notice Emitted when the LP fee rate for a token is changed
-    event LPFeeChanged(address indexed token, uint256 oldFee, uint256 newFee);
-    
     /// @notice Emitted when an LP votes for a fee amount
     event LPFeeVoteCast(address indexed token, address indexed voter, uint256 feeAmount, uint256 voterShares);
     
