@@ -178,6 +178,118 @@ For a 1000 token deposit and subsequent withdrawal:
 - **Withdrawal**: User's proportional share minus 100 wei exit fee (which stays in pool)
 - **Effect**: Fixed fees accumulate as permanent dust, making precision attacks unprofitable
 
+## Flash Loan Executor Contracts
+
+For advanced users who need to execute multiple operations within a single flash loan, the protocol includes specialized executor contracts that simplify complex flash loan workflows.
+
+⚡ **GAS OPTIMIZATION**: The executor contracts are designed for maximum gas efficiency. Users are responsible for repaying flash loans directly to the lender in their operations, eliminating unnecessary token transfers and saving significant gas costs.
+
+### ERC20FlashLoanExecuter
+
+A reusable contract that can execute multiple operations within a single flash loan transaction.
+
+**Key Features:**
+- 📋 **Multi-Operation Support**: Execute multiple contract calls in sequence
+- 🔒 **Owner-Controlled**: Only the owner can initiate flash loans and execute operations  
+- 💰 **ETH Support**: Can handle operations that require ETH transfers
+- 🔄 **Reusable**: Same executor can be used for multiple flash loans
+- 🔍 **ERC165 Compliant**: Supports interface detection
+- ⚡ **Gas Optimized**: Users handle repayment directly to save gas
+
+**Functions:**
+- `executeFlashLoan(token, amount, operations[])` - Execute flash loan with multiple operations
+- `executeCall(target, data, value)` - Execute arbitrary calls as owner (post-flash loan)
+- `getFlashLender()` - Get the lender address for direct repayment
+- `supportsInterface(interfaceId)` - Check interface support
+
+**Gas Optimization Details:**
+The executor no longer handles flash loan repayment automatically. Instead, **users must include repayment in their operations** by transferring the required amount directly to the flash lender. This saves gas by eliminating an extra transfer step.
+
+### ERC20FlashLoanExecuterFactory
+
+A factory contract that creates and manages flash loan executors with a streamlined workflow.
+
+**Key Features:**
+- 🏭 **One-Transaction Creation**: Create executor and execute flash loan in single transaction
+- 🔄 **Ownership Transfer**: Automatically transfers executor ownership to user after execution
+- ⚡ **Gas Efficient**: Optimized deployment and execution pattern
+
+**Functions:**
+- `createAndExecuteFlashLoan(token, amount, operations[])` - Create executor and execute flash loan
+
+### Operation Structure
+
+Both contracts use a standardized `Operation` struct for defining actions:
+
+```solidity
+struct Operation {
+    address target;     // Contract to call
+    bytes data;         // Calldata for the operation  
+    uint256 value;      // ETH value to send (if needed)
+}
+```
+
+### Usage Example (Gas Optimized)
+
+```solidity
+// Using the factory for gas-optimized operations
+ERC20FlashLoanExecuter.Operation[] memory operations = new ERC20FlashLoanExecuter.Operation[](3);
+
+// 1. Perform arbitrage or other operations with borrowed tokens
+operations[0] = ERC20FlashLoanExecuter.Operation({
+    target: address(dexContract),
+    data: abi.encodeWithSignature("swap(uint256,address)", flashAmount, tokenOut),
+    value: 0
+});
+
+// 2. Convert profits back to borrowed token
+operations[1] = ERC20FlashLoanExecuter.Operation({
+    target: address(dexContract),
+    data: abi.encodeWithSignature("swapBack(uint256,address)", profits, borrowedToken),
+    value: 0
+});
+
+// 3. IMPORTANT: Repay flash loan directly to lender (saves gas!)
+operations[2] = ERC20FlashLoanExecuter.Operation({
+    target: address(someContract), // Contract that holds repayment tokens
+    data: abi.encodeWithSignature(
+        "transferTo(address,address,uint256)", 
+        borrowedToken,
+        flashLender,      // Send directly to lender - saves gas!
+        totalOwed        // principal + fees
+    ),
+    value: 0
+});
+
+// Execute everything in one transaction
+address executor = factory.createAndExecuteFlashLoan(token, amount, operations);
+
+// The executor is now owned by msg.sender and can be reused
+ERC20FlashLoanExecuter(executor).executeCall(target, data, value);
+```
+
+### Traditional vs Gas-Optimized Flow
+
+**❌ Traditional (Inefficient) Flow:**
+1. Lender → Executor (flash loan)
+2. Executor → Operations (execute calls)
+3. Operations → Executor (send repayment tokens)
+4. **Executor → Lender (extra transfer!)** ← Gas waste
+
+**✅ Gas-Optimized Flow:**
+1. Lender → Executor (flash loan)  
+2. Executor → Operations (execute calls)
+3. **Operations → Lender (direct repayment)** ← Saves gas!
+
+**Gas Savings:** Eliminates one token transfer, saving ~21,000+ gas per flash loan.
+
+**Use Cases:**
+- 🔄 **Arbitrage**: Multi-DEX arbitrage opportunities
+- 💱 **Liquidations**: Complex liquidation workflows across protocols  
+- 🏦 **Refinancing**: Moving positions between lending protocols
+- ⚖️ **Rebalancing**: Portfolio rebalancing with temporary liquidity
+- 🔧 **Protocol Interactions**: Complex DeFi operations requiring temporary capital
+
 ## Usage Examples
 
 ### For Liquidity Providers
