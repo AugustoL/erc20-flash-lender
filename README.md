@@ -180,9 +180,11 @@ For a 1000 token deposit and subsequent withdrawal:
 
 ## Flash Loan Executor Contracts
 
-For advanced users who need to execute multiple operations within a single flash loan, the protocol includes specialized executor contracts that simplify complex flash loan workflows.
+For advanced users who need to execute multiple operations within a single flash loan, the protocol includes specialized executor contracts that simplify complex flash loan workflows and provide maximum flexibility.
 
 ⚡ **GAS OPTIMIZATION**: The executor contracts are designed for maximum gas efficiency. Users are responsible for repaying flash loans directly to the lender in their operations, eliminating unnecessary token transfers and saving significant gas costs.
+
+🔄 **FLEXIBILITY**: Executors can be created once and reused for multiple flash loans and post-execution operations, or created and executed in a single transaction for convenience.
 
 ### ERC20FlashLoanExecutor
 
@@ -207,15 +209,18 @@ The executor no longer handles flash loan repayment automatically. Instead, **us
 
 ### ERC20FlashLoanExecutorFactory
 
-A factory contract that creates and manages flash loan executors with a streamlined workflow.
+A factory contract that creates and manages flash loan executors with flexible deployment options.
 
 **Key Features:**
 - 🏭 **One-Transaction Creation**: Create executor and execute flash loan in single transaction
+- 🔄 **Two-Step Workflow**: Create executor separately, then execute multiple flash loans
 - 🔄 **Ownership Transfer**: Automatically transfers executor ownership to user after execution
-- ⚡ **Gas Efficient**: Optimized deployment and execution pattern
+- ⚡ **Gas Efficient**: Optimized deployment and execution patterns
+- 🔁 **Executor Reusability**: Created executors can be reused for multiple operations
 
 **Functions:**
-- `createAndExecuteFlashLoan(token, amount, operations[])` - Create executor and execute flash loan
+- `createExecutor()` - Create a standalone executor with caller as owner (reusable)
+- `createAndExecuteFlashLoan(token, amount, operations[])` - Create executor and execute flash loan in one transaction
 
 ### Operation Structure
 
@@ -232,7 +237,7 @@ struct Operation {
 ### Usage Example (Gas Optimized)
 
 ```solidity
-// Using the factory for gas-optimized operations
+// Method 1: Factory with immediate execution (recommended for most users)
 ERC20FlashLoanExecutor.Operation[] memory operations = new ERC20FlashLoanExecutor.Operation[](3);
 
 // 1. Perform arbitrage or other operations with borrowed tokens
@@ -261,10 +266,18 @@ operations[2] = ERC20FlashLoanExecutor.Operation({
     value: 0
 });
 
-// Execute everything in one transaction
+// One-transaction workflow: create and execute
 address executor = factory.createAndExecuteFlashLoan(token, amount, operations);
 
-// The executor is now owned by msg.sender and can be reused
+// Method 2: Two-step workflow for reusable executors (advanced users)
+// Step 1: Create reusable executor
+address executor = factory.createExecutor();
+
+// Step 2: Execute multiple flash loans with same executor
+ERC20FlashLoanExecutor(executor).executeFlashLoan(token1, amount1, operations1);
+ERC20FlashLoanExecutor(executor).executeFlashLoan(token2, amount2, operations2);
+
+// The executor persists and can be reused for post-execution operations
 ERC20FlashLoanExecutor(executor).executeCall(target, data, value);
 ```
 
@@ -289,6 +302,8 @@ ERC20FlashLoanExecutor(executor).executeCall(target, data, value);
 - 🏦 **Refinancing**: Moving positions between lending protocols
 - ⚖️ **Rebalancing**: Portfolio rebalancing with temporary liquidity
 - 🔧 **Protocol Interactions**: Complex DeFi operations requiring temporary capital
+
+📖 **For comprehensive documentation, examples, and gas cost analysis, see [docs/FlashLoanExecutor.md](docs/FlashLoanExecutor.md)**
 
 ## Usage Examples
 

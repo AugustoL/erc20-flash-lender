@@ -21,7 +21,20 @@ contract ERC20FlashLoanExecutorFactory {
         require(_flashLender != address(0), "Invalid flash lender");
         flashLender = ERC20FlashLender(_flashLender);
     }
-    
+
+    /**
+     * @notice Create a new flash loan executor contract
+     * @return executor Address of the newly created executor contract
+     */
+    function createExecutor() external returns (address executor) {
+        // Create a new executor contract
+        ERC20FlashLoanExecutor executorContract = new ERC20FlashLoanExecutor(
+            address(flashLender),
+            msg.sender
+        );
+        
+        return address(executorContract);
+    }
 
     /**
      * @notice Create and execute a flash loan with multiple operations

@@ -51,9 +51,6 @@ describe("ERC20FlashLoanExecutor", function () {
     const simpleTarget = await SimpleTarget.deploy();
     await simpleTarget.waitForDeployment();
 
-    // Fund the SimpleTarget with some tokens to repay flash loans
-    await token.transfer(await simpleTarget.getAddress(), ethers.parseEther("10"));
-
     return { 
       factory, 
       lender, 
@@ -170,6 +167,253 @@ describe("ERC20FlashLoanExecutor", function () {
 
       // Should execute all operations: set to 100, then increment twice = 102
       expect(await simpleTarget.value()).to.equal(102);
+    });
+  });
+
+  describe("Two-Step Process: Separate Creation and Execution", function () {
+    it("Should create executor via factory and then execute flash loan separately", async function () {
+      const { factory, lender, token, simpleTarget, user1 } = await loadFixture(deployFactoryFixture);
+      
+      // Step 1: Create executor
+      const executorAddress = await factory.connect(user1).createExecutor.staticCall();
+      await factory.connect(user1).createExecutor();
+      
+      const executor = await ethers.getContractAt("ERC20FlashLoanExecutor", executorAddress);
+      
+      // Verify executor is properly set up
+      expect(await executor.owner()).to.equal(user1.address);
+      expect(await executor.getFlashLender()).to.equal(await lender.getAddress());
+      
+      // Step 2: Prepare flash loan
+      const loanAmount = ethers.parseEther("150");
+      const { totalFee } = calculateFlashLoanFees(loanAmount);
+      const totalNeeded = loanAmount + totalFee;
+      
+      // Pre-fund the simpleTarget for repayment
+      await token.transfer(await simpleTarget.getAddress(), totalNeeded);
+      
+      const operations = [
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token.getAddress(),
+            await lender.getAddress(),
+            totalNeeded
+          ]),
+          value: 0
+        }
+      ];
+      
+      // Step 3: Execute flash loan using the created executor
+      await executor.connect(user1).executeFlashLoan(
+        await token.getAddress(),
+        loanAmount,
+        operations
+      );
+    });
+
+    it("Should allow multiple flash loans with the same executor", async function () {
+      const { factory, lender, token, simpleTarget, user1 } = await loadFixture(deployFactoryFixture);
+      
+      // Create executor once
+      const executorAddress = await factory.connect(user1).createExecutor.staticCall();
+      await factory.connect(user1).createExecutor();
+      const executor = await ethers.getContractAt("ERC20FlashLoanExecutor", executorAddress);
+      
+      // First flash loan
+      const loanAmount1 = ethers.parseEther("100");
+      const { totalFee: totalFee1 } = calculateFlashLoanFees(loanAmount1);
+      const totalNeeded1 = loanAmount1 + totalFee1;
+      
+      await token.transfer(await simpleTarget.getAddress(), totalNeeded1);
+      
+      const operations1 = [
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("setValue", [111]),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token.getAddress(),
+            await lender.getAddress(),
+            totalNeeded1
+          ]),
+          value: 0
+        }
+      ];
+      
+      await executor.connect(user1).executeFlashLoan(
+        await token.getAddress(),
+        loanAmount1,
+        operations1
+      );
+      
+      expect(await simpleTarget.value()).to.equal(111);
+      
+      // Second flash loan with different amount
+      const loanAmount2 = ethers.parseEther("250");
+      const { totalFee: totalFee2 } = calculateFlashLoanFees(loanAmount2);
+      const totalNeeded2 = loanAmount2 + totalFee2;
+      
+      await token.transfer(await simpleTarget.getAddress(), totalNeeded2);
+      
+      const operations2 = [
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("setValue", [222]),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("increment"),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token.getAddress(),
+            await lender.getAddress(),
+            totalNeeded2
+          ]),
+          value: 0
+        }
+      ];
+      
+      await executor.connect(user1).executeFlashLoan(
+        await token.getAddress(),
+        loanAmount2,
+        operations2
+      );
+      
+      // Should be 222 + 1 = 223
+      expect(await simpleTarget.value()).to.equal(223);
+    });
+
+    it("Should reject flash loan execution from non-owner", async function () {
+      const { factory, lender, token, simpleTarget, user1, user2 } = await loadFixture(deployFactoryFixture);
+      
+      // Create executor owned by user1
+      const executorAddress = await factory.connect(user1).createExecutor.staticCall();
+      await factory.connect(user1).createExecutor();
+      const executor = await ethers.getContractAt("ERC20FlashLoanExecutor", executorAddress);
+      
+      const loanAmount = ethers.parseEther("100");
+      const { totalFee } = calculateFlashLoanFees(loanAmount);
+      const totalNeeded = loanAmount + totalFee;
+      
+      await token.transfer(await simpleTarget.getAddress(), totalNeeded);
+      
+      const operations = [
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("setValue", [999]),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token.getAddress(),
+            await lender.getAddress(),
+            totalNeeded
+          ]),
+          value: 0
+        }
+      ];
+      
+      // user2 should not be able to execute flash loan on user1's executor
+      await expect(executor.connect(user2).executeFlashLoan(
+        await token.getAddress(),
+        loanAmount,
+        operations
+      )).to.be.revertedWithCustomError(executor, "OwnableUnauthorizedAccount");
+    });
+
+    it("Should handle complex multi-step operations in separate executor", async function () {
+      const { factory, lender, token, simpleTarget, user1 } = await loadFixture(deployFactoryFixture);
+      
+      // Create executor
+      const executorAddress = await factory.connect(user1).createExecutor.staticCall();
+      await factory.connect(user1).createExecutor();
+      const executor = await ethers.getContractAt("ERC20FlashLoanExecutor", executorAddress);
+      
+      const loanAmount = ethers.parseEther("500");
+      const { totalFee } = calculateFlashLoanFees(loanAmount);
+      const totalNeeded = loanAmount + totalFee;
+      
+      // Fund for repayment
+      await token.transfer(await simpleTarget.getAddress(), totalNeeded);
+      
+      // Complex operations: set value, multiple increments, then repay
+      const operations = [
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("setValue", [1000]),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("increment"),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("increment"),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("increment"),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token.getAddress(),
+            await lender.getAddress(),
+            totalNeeded
+          ]),
+          value: 0
+        }
+      ];
+      
+      await executor.connect(user1).executeFlashLoan(
+        await token.getAddress(),
+        loanAmount,
+        operations
+      );
+      
+      // Should be 1000 + 3 = 1003
+      expect(await simpleTarget.value()).to.equal(1003);
+      
+      // Executor should still be functional for post-execution operations
+      await executor.connect(user1).executeCall(
+        await simpleTarget.getAddress(),
+        simpleTarget.interface.encodeFunctionData("setValue", [2000]),
+        0
+      );
+      
+      expect(await simpleTarget.value()).to.equal(2000);
+    });
+
+    it("Should verify executor state and configuration", async function () {
+      const { factory, lender, user1 } = await loadFixture(deployFactoryFixture);
+      
+      const executorAddress = await factory.connect(user1).createExecutor.staticCall();
+      await factory.connect(user1).createExecutor();
+      const executor = await ethers.getContractAt("ERC20FlashLoanExecutor", executorAddress);
+      
+      // Verify executor configuration
+      expect(await executor.owner()).to.equal(user1.address);
+      expect(await executor.getFlashLender()).to.equal(await lender.getAddress());
+      
+      // Verify interface support
+      const flashLoanReceiverInterfaceId = ethers.keccak256(ethers.toUtf8Bytes("executeOperation(address,uint256,uint256,bytes)")).slice(0, 10);
+      expect(await executor.supportsInterface(flashLoanReceiverInterfaceId)).to.be.true;
+      
+      const erc165InterfaceId = "0x01ffc9a7";
+      expect(await executor.supportsInterface(erc165InterfaceId)).to.be.true;
     });
   });
 
