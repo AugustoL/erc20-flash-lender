@@ -8,18 +8,18 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 /**
- * @title ERC20FlashLoanExecuter
- * @notice Very simple contract for executing multiple operations within a single flash loan
- * @dev This contract executes flash loan immediately upon deployment and can be reused
- * @dev Supports executing arbitrary calls as owner, useful for post-loan operations
- * @dev Allowing the user to reclaim any leftover tokens and ETH after operations
- * @dev Implements IFlashLoanReceiver interface for flash loan operations
- * @dev Uses SafeERC20 for secure token transfers
- * @dev Supports ERC165 for interface detection
- * @dev GAS OPTIMIZATION: Users can repay flash loans directly to the lender in their operations
- *      to save an extra transfer. The executor only handles repayment as a fallback.
+ * @title ERC20FlashLoanExecutor
+ * @notice A reusable contract that executes flash loans with multiple operations
+ * @dev This contract can be used to execute complex operations within a single flash loan
+ * @dev Users must handle repayment directly to the lender in their operations for gas efficiency
  */
-contract ERC20FlashLoanExecuter is IFlashLoanReceiver, Ownable, ERC165 {
+
+/**
+ * @title ERC20FlashLoanExecutor
+ * @notice Flash loan executor that can perform multiple operations
+ * @dev Gas optimized - users handle repayment directly to lender
+ */
+contract ERC20FlashLoanExecutor is IFlashLoanReceiver, Ownable, ERC165 {
     using SafeERC20 for IERC20;
 
     /// @notice The flash loan lender contract

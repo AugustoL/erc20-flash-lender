@@ -1,6 +1,6 @@
-# ERC20 Flash Loan Executer Factory
+# ERC20 Flash Loan Executor Factory
 
-This document explains how to use the ERC20 Flash Loan Executer Factory system for executing complex operations within flash loans.
+This document explains how to use the ERC20 Flash Loan Executor Factory system for executing complex operations within flash loans.
 
 ## Overview
 
@@ -44,24 +44,24 @@ The factory system provides a streamlined executor system that:
 
 ```solidity
 // Define operations to execute within the flash loan
-ERC20FlashLoanExecuter.Operation[] memory operations = new ERC20FlashLoanExecuter.Operation[](3);
+ERC20FlashLoanExecutor.Operation[] memory operations = new ERC20FlashLoanExecutor.Operation[](3);
 
 // 1. Perform arbitrage or other operations
-operations[0] = ERC20FlashLoanExecuter.Operation({
+operations[0] = ERC20FlashLoanExecutor.Operation({
     target: address(dexContract),
     data: abi.encodeWithSignature("swap(address,address,uint256)", tokenA, tokenB, flashAmount),
     value: 0
 });
 
 // 2. Perform reverse arbitrage to earn profit
-operations[1] = ERC20FlashLoanExecuter.Operation({
+operations[1] = ERC20FlashLoanExecutor.Operation({
     target: address(anotherDex),
     data: abi.encodeWithSignature("swap(address,address,uint256)", tokenB, tokenA, receivedAmount),
     value: 0
 });
 
 // 3. CRITICAL: Repay flash loan directly to lender (saves gas!)
-operations[2] = ERC20FlashLoanExecuter.Operation({
+operations[2] = ERC20FlashLoanExecutor.Operation({
     target: address(yourContract), // Contract that holds repayment tokens
     data: abi.encodeWithSignature(
         "transferToLender(address,address,uint256)", 
@@ -104,7 +104,7 @@ function calculateFlashLoanFees(uint256 amount) pure returns (uint256 totalOwed)
 
 ```solidity
 // The executor is owned by msg.sender after factory execution
-ERC20FlashLoanExecuter executor = ERC20FlashLoanExecuter(executorAddress);
+ERC20FlashLoanExecutor executor = ERC20FlashLoanExecutor(executorAddress);
 
 // Example: Withdraw any remaining ETH
 (bool success, ) = executor.executeCall(

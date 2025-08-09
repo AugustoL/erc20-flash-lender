@@ -2,7 +2,7 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 
-describe("ERC20FlashLoanExecuter", function () {
+describe("ERC20FlashLoanExecutor", function () {
   // Helper function to calculate correct fees matching the lender contract
   function calculateFlashLoanFees(amount: bigint): { lpFee: bigint, mgmtFee: bigint, totalFee: bigint } {
     const DEFAULT_LP_FEE_BPS = 1n;
@@ -32,8 +32,8 @@ describe("ERC20FlashLoanExecuter", function () {
     await lender.initialize(100); // 1% management fee
 
     // Deploy the factory
-    const ERC20FlashLoanExecuterFactory = await ethers.getContractFactory("ERC20FlashLoanExecuterFactory");
-    const factory = await ERC20FlashLoanExecuterFactory.deploy(await lender.getAddress());
+    const ERC20FlashLoanExecutorFactory = await ethers.getContractFactory("ERC20FlashLoanExecutorFactory");
+    const factory = await ERC20FlashLoanExecutorFactory.deploy(await lender.getAddress());
     await factory.waitForDeployment();
 
     // Setup token balances and initial liquidity
@@ -74,9 +74,9 @@ describe("ERC20FlashLoanExecuter", function () {
     });
 
     it("Should reject deployment with zero address", async function () {
-      const ERC20FlashLoanExecuterFactory = await ethers.getContractFactory("ERC20FlashLoanExecuterFactory");
+      const ERC20FlashLoanExecutorFactory = await ethers.getContractFactory("ERC20FlashLoanExecutorFactory");
       
-      await expect(ERC20FlashLoanExecuterFactory.deploy(ethers.ZeroAddress))
+      await expect(ERC20FlashLoanExecutorFactory.deploy(ethers.ZeroAddress))
         .to.be.revertedWith("Invalid flash lender");
     });
   });
@@ -221,7 +221,7 @@ describe("ERC20FlashLoanExecuter", function () {
 
     it("Should allow owner to execute arbitrary calls", async function () {
       // Get the executor contract instance
-      const executor = await ethers.getContractAt("ERC20FlashLoanExecuter", executorAddress);
+      const executor = await ethers.getContractAt("ERC20FlashLoanExecutor", executorAddress);
 
       // Execute arbitrary call to change the value again
       await executor.connect(user1).executeCall(
@@ -234,7 +234,7 @@ describe("ERC20FlashLoanExecuter", function () {
     });
 
     it("Should reject non-owner attempts to execute calls", async function () {
-      const executor = await ethers.getContractAt("ERC20FlashLoanExecuter", executorAddress);
+      const executor = await ethers.getContractAt("ERC20FlashLoanExecutor", executorAddress);
 
       await expect(executor.connect(user2).executeCall(
         await simpleTarget.getAddress(),
@@ -244,7 +244,7 @@ describe("ERC20FlashLoanExecuter", function () {
     });
 
     it("Should receive ETH via receive function", async function () {
-      const executor = await ethers.getContractAt("ERC20FlashLoanExecuter", executorAddress);
+      const executor = await ethers.getContractAt("ERC20FlashLoanExecutor", executorAddress);
       
       const ethAmount = ethers.parseEther("0.5");
       await user1.sendTransaction({
@@ -296,7 +296,7 @@ describe("ERC20FlashLoanExecuter", function () {
         operations
       );
       
-      const executor = await ethers.getContractAt("ERC20FlashLoanExecuter", executorAddress);
+      const executor = await ethers.getContractAt("ERC20FlashLoanExecutor", executorAddress);
       
       // Get the interface ID for IFlashLoanReceiver
       // This should be calculated from the function selector: executeOperation(address,uint256,uint256,bytes)
@@ -339,7 +339,7 @@ describe("ERC20FlashLoanExecuter", function () {
         operations
       );
       
-      const executor = await ethers.getContractAt("ERC20FlashLoanExecuter", executorAddress);
+      const executor = await ethers.getContractAt("ERC20FlashLoanExecutor", executorAddress);
       
       // ERC165 interface ID
       const erc165InterfaceId = "0x01ffc9a7";
@@ -381,7 +381,7 @@ describe("ERC20FlashLoanExecuter", function () {
         operations
       );
       
-      const executor = await ethers.getContractAt("ERC20FlashLoanExecuter", executorAddress);
+      const executor = await ethers.getContractAt("ERC20FlashLoanExecutor", executorAddress);
       
       // Invalid interface ID
       const invalidInterfaceId = "0x12345678";
@@ -454,10 +454,10 @@ describe("ERC20FlashLoanExecuter", function () {
     it("Should reject invalid constructor parameters", async function () {
       const { lender } = await loadFixture(deployFactoryFixture);
       
-      const ERC20FlashLoanExecuterFactory = await ethers.getContractFactory("ERC20FlashLoanExecuterFactory");
+      const ERC20FlashLoanExecutorFactory = await ethers.getContractFactory("ERC20FlashLoanExecutorFactory");
       
       // Invalid flash lender address
-      await expect(ERC20FlashLoanExecuterFactory.deploy(ethers.ZeroAddress))
+      await expect(ERC20FlashLoanExecutorFactory.deploy(ethers.ZeroAddress))
         .to.be.revertedWith("Invalid flash lender");
     });
   });

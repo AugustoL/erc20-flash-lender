@@ -184,7 +184,7 @@ For advanced users who need to execute multiple operations within a single flash
 
 ⚡ **GAS OPTIMIZATION**: The executor contracts are designed for maximum gas efficiency. Users are responsible for repaying flash loans directly to the lender in their operations, eliminating unnecessary token transfers and saving significant gas costs.
 
-### ERC20FlashLoanExecuter
+### ERC20FlashLoanExecutor
 
 A reusable contract that can execute multiple operations within a single flash loan transaction.
 
@@ -205,7 +205,7 @@ A reusable contract that can execute multiple operations within a single flash l
 **Gas Optimization Details:**
 The executor no longer handles flash loan repayment automatically. Instead, **users must include repayment in their operations** by transferring the required amount directly to the flash lender. This saves gas by eliminating an extra transfer step.
 
-### ERC20FlashLoanExecuterFactory
+### ERC20FlashLoanExecutorFactory
 
 A factory contract that creates and manages flash loan executors with a streamlined workflow.
 
@@ -233,24 +233,24 @@ struct Operation {
 
 ```solidity
 // Using the factory for gas-optimized operations
-ERC20FlashLoanExecuter.Operation[] memory operations = new ERC20FlashLoanExecuter.Operation[](3);
+ERC20FlashLoanExecutor.Operation[] memory operations = new ERC20FlashLoanExecutor.Operation[](3);
 
 // 1. Perform arbitrage or other operations with borrowed tokens
-operations[0] = ERC20FlashLoanExecuter.Operation({
+operations[0] = ERC20FlashLoanExecutor.Operation({
     target: address(dexContract),
     data: abi.encodeWithSignature("swap(uint256,address)", flashAmount, tokenOut),
     value: 0
 });
 
 // 2. Convert profits back to borrowed token
-operations[1] = ERC20FlashLoanExecuter.Operation({
+operations[1] = ERC20FlashLoanExecutor.Operation({
     target: address(dexContract),
     data: abi.encodeWithSignature("swapBack(uint256,address)", profits, borrowedToken),
     value: 0
 });
 
 // 3. IMPORTANT: Repay flash loan directly to lender (saves gas!)
-operations[2] = ERC20FlashLoanExecuter.Operation({
+operations[2] = ERC20FlashLoanExecutor.Operation({
     target: address(someContract), // Contract that holds repayment tokens
     data: abi.encodeWithSignature(
         "transferTo(address,address,uint256)", 
@@ -265,7 +265,7 @@ operations[2] = ERC20FlashLoanExecuter.Operation({
 address executor = factory.createAndExecuteFlashLoan(token, amount, operations);
 
 // The executor is now owned by msg.sender and can be reused
-ERC20FlashLoanExecuter(executor).executeCall(target, data, value);
+ERC20FlashLoanExecutor(executor).executeCall(target, data, value);
 ```
 
 ### Traditional vs Gas-Optimized Flow

@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.28;
 
-import "./ERC20FlashLoanExecuter.sol";
+import "./ERC20FlashLoanExecutor.sol";
 import "./ERC20FlashLender.sol";
 
 /**
- * @title ERC20FlashLoanExecuterFactory
+ * @title ERC20FlashLoanExecutorFactory
  * @notice Factory contract for creating flash loan executors
  * @dev Creates flash loan executor contracts that execute immediately upon deployment
  */
-contract ERC20FlashLoanExecuterFactory {
+contract ERC20FlashLoanExecutorFactory {
     /// @notice The flash loan lender contract
     ERC20FlashLender public immutable flashLender;
 
@@ -21,6 +21,7 @@ contract ERC20FlashLoanExecuterFactory {
         require(_flashLender != address(0), "Invalid flash lender");
         flashLender = ERC20FlashLender(_flashLender);
     }
+    
 
     /**
      * @notice Create and execute a flash loan with multiple operations
@@ -32,10 +33,10 @@ contract ERC20FlashLoanExecuterFactory {
     function createAndExecuteFlashLoan(
         address token,
         uint256 amount,
-        ERC20FlashLoanExecuter.Operation[] calldata operations
+        ERC20FlashLoanExecutor.Operation[] calldata operations
     ) external returns (address executor) {
         // Create executor with factory as temporary owner
-        ERC20FlashLoanExecuter executorContract = new ERC20FlashLoanExecuter(
+        ERC20FlashLoanExecutor executorContract = new ERC20FlashLoanExecutor(
             address(flashLender),
             address(this) // Factory is temporary owner
         );
