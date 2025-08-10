@@ -39,8 +39,8 @@ describe("ERC20FlashLender", function () {
     const lender = await ERC20FlashLender.deploy();
     await lender.waitForDeployment();
 
-    // Initialize with 1% management fee (as percentage of LP fee)
-    await lender.initialize(100);
+    // Initialize with 0% management fee (default for early liquidity incentives)
+    await lender.initialize(0);
 
     // Setup token balances
     const initialBalance = ethers.parseEther("10000");
@@ -56,9 +56,8 @@ describe("ERC20FlashLender", function () {
       const { lender, owner } = await loadFixture(deployERC20FlashLenderFixture);
 
       expect(await lender.owner()).to.equal(owner.address);
-      expect(await lender.managementFeePercentage()).to.equal(100);
+      expect(await lender.managementFeePercentage()).to.equal(0);
       expect(await lender.DEFAULT_LP_FEE_BPS()).to.equal(1);
-      expect(await lender.MIN_MANAGEMENT_FEE_PERCENTAGE()).to.equal(100);
       expect(await lender.MAX_MANAGEMENT_FEE_PERCENTAGE()).to.equal(500);
       expect(await lender.MAX_LP_FEE_BPS()).to.equal(100);
       expect(await lender.MINIMUM_DEPOSIT()).to.equal(100000000); // 1e8
@@ -71,11 +70,12 @@ describe("ERC20FlashLender", function () {
       await expect(lender.initialize(600)).to.be.revertedWith("Mgmt fee out of range"); // > 5%
     });
 
-    it("Should reject initialization with too low management fee", async function () {
+    it("Should allow initialization with 0% management fee", async function () {
       const ERC20FlashLender = await ethers.getContractFactory("ERC20FlashLender");
       const lender = await ERC20FlashLender.deploy();
       
-      await expect(lender.initialize(50)).to.be.revertedWith("Mgmt fee out of range"); // < 1%
+      await expect(lender.initialize(0)).to.not.be.reverted; // 0% is now allowed
+      expect(await lender.managementFeePercentage()).to.equal(0);
     });
   });
 
@@ -268,9 +268,9 @@ describe("ERC20FlashLender", function () {
         "0x"
       )).to.emit(lender, "FlashLoan");
 
-      // Check fees were distributed
+      // Check fees were distributed - with 0% management fee, no management fees collected
       const mgmtFees = await lender.collectedManagementFees(tokenAddress);
-      expect(mgmtFees).to.be.gt(0);
+      expect(mgmtFees).to.equal(0);
     });
 
     it("Should reject flash loan with insufficient liquidity", async function () {
@@ -327,13 +327,14 @@ describe("ERC20FlashLender", function () {
       await receiver.waitForDeployment();
       
       // Fund receiver with insufficient amount (less than loan + fees)
-      // Loan = 100, fees = ~0.02
-      await transfer(token, user2, await receiver.getAddress(), ethers.parseEther("0.01"));
+      // With 0% management fee: Loan = 100 ETH, LP fee = 0.01 ETH, mgmt fee = 0, total = 100.01 ETH
+      // Give receiver only 0.005 ETH which is clearly insufficient
+      await transfer(token, user2, await receiver.getAddress(), ethers.parseEther("0.005"));
       
       // Debug: Check balances before flash loan
       const receiverBalance = await token.balanceOf(await receiver.getAddress());
       const lpFee = (loanAmount * 1n) / 10000n; // 1 bps LP fee
-      const mgmtFee = (lpFee * 100n) / 10000n; // 1% of LP fee
+      const mgmtFee = (lpFee * 0n) / 10000n; // 0% of LP fee
       const totalFee = lpFee + mgmtFee;
       const totalOwed = loanAmount + totalFee;
       
@@ -361,8 +362,8 @@ describe("ERC20FlashLender", function () {
       await receiver.waitForDeployment();
       
       // Fund receiver with enough to repay loan + fees
-      // LP fee = 0.01% of 1000 = 0.1 ETH, Management fee = 1% of LP fee = 0.001 ETH
-      // Total needed = 1000 + 0.1 + 0.001 = 1000.101 ETH
+      // LP fee = 0.01% of 1000 = 0.1 ETH, Management fee = 0% of LP fee = 0 ETH
+      // Total needed = 1000 + 0.1 + 0 = 1000.1 ETH
       await transfer(token, user2, await receiver.getAddress(), ethers.parseEther("1001"));
       
       const liquidityBefore = await lender.totalLiquidity(tokenAddress);
@@ -378,9 +379,9 @@ describe("ERC20FlashLender", function () {
       const mgmtFees = await lender.collectedManagementFees(tokenAddress);
       
       // LP fee = 0.01% of 1000 = 0.1 ETH
-      // Management fee = 1% of LP fee = 1% of 0.1 = 0.001 ETH
+      // Management fee = 0% of LP fee = 0% of 0.1 = 0 ETH
       expect(liquidityAfter - liquidityBefore).to.equal(ethers.parseEther("0.1"));
-      expect(mgmtFees).to.equal(ethers.parseEther("0.001"));
+      expect(mgmtFees).to.equal(0);
     });
   });
 
@@ -571,8 +572,8 @@ describe("ERC20FlashLender", function () {
       // Calculate expected fees
       const token1LpFee = (loanAmount1 * 1n) / 10000n; // 1 bps
       const token2LpFee = (loanAmount2 * 1n) / 10000n; // 1 bps
-      const token1MgmtFee = (loanAmount1 * 1n * 100n) / 100000000n; // 1% of LP fee
-      const token2MgmtFee = (loanAmount2 * 1n * 100n) / 100000000n; // 1% of LP fee
+      const token1MgmtFee = (loanAmount1 * 1n * 0n) / 100000000n; // 0% of LP fee
+      const token2MgmtFee = (loanAmount2 * 1n * 0n) / 100000000n; // 0% of LP fee
       
       expect(token1LiquidityAfter - token1LiquidityBefore).to.equal(token1LpFee);
       expect(token2LiquidityAfter - token2LiquidityBefore).to.equal(token2LpFee);
@@ -626,7 +627,7 @@ describe("ERC20FlashLender", function () {
       
       await expect(lender.connect(owner).setManagementFee(newFeePercentage))
         .to.emit(lender, "ManagementFeeChanged")
-        .withArgs(100, newFeePercentage); // From 1% to 2%
+        .withArgs(0, newFeePercentage); // From 0% to 2%
       
       expect(await lender.managementFeePercentage()).to.equal(newFeePercentage);
     });
@@ -638,13 +639,17 @@ describe("ERC20FlashLender", function () {
       await expect(lender.connect(owner).setManagementFee(600)) // > 5%
         .to.be.revertedWith("Fee out of range");
       
-      // Test too low  
-      await expect(lender.connect(owner).setManagementFee(50)) // < 1%
-        .to.be.revertedWith("Fee out of range");
+      // Test that 0% is allowed
+      await expect(lender.connect(owner).setManagementFee(0))
+        .to.not.be.reverted;
+      expect(await lender.managementFeePercentage()).to.equal(0);
     });
 
     it("Should allow owner to withdraw management fees", async function () {
       const { lender, lenderAddress, token, tokenAddress, owner, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // First set a non-zero management fee to generate fees
+      await lender.connect(owner).setManagementFee(100); // 1% of LP fee
       
       // Setup: deposit and generate fees
       const depositAmount = ethers.parseEther("1000");
@@ -867,9 +872,9 @@ describe("ERC20FlashLender", function () {
       
       // Fund malicious receiver with just enough for the fee (not principal)
       // LP fee = 100 ETH * 1 basis point = 0.01 ETH
-      // Management fee = 0.01 ETH * 1% = 0.0001 ETH  
-      // Total fee = 0.0101 ETH
-      const estimatedFee = ethers.parseEther("0.0101");
+      // Management fee = 0.01 ETH * 0% = 0 ETH  
+      // Total fee = 0.01 ETH
+      const estimatedFee = ethers.parseEther("0.01");
       await transfer(token, user2, await maliciousReceiver.getAddress(), estimatedFee);
       
       // Flash loan should fail because only fee is repaid, not principal
@@ -915,10 +920,10 @@ describe("ERC20FlashLender", function () {
       const actualFeeCollected = balanceAfterFlashLoan - balanceBeforeFlashLoan;
       
       // LP fee = 100 ETH * 1 basis point = 0.01 ETH
-      // Management fee = 0.01 ETH * 1% = 0.0001 ETH
-      // But management fee has precision issues, so let's calculate actual values
+      // Management fee = 0.01 ETH * 0% = 0 ETH
+      // Total fee goes to LP pool since management fee is 0%
       const expectedLPFee = (loanAmount * 1n) / 10000n; // 1 basis point
-      const expectedMgmtFee = (expectedLPFee * 100n) / 10000n; // 1% of LP fee  
+      const expectedMgmtFee = 0n; // 0% management fee
       const expectedTotalFee = expectedLPFee + expectedMgmtFee;
       
       // The fee collected should match our calculation

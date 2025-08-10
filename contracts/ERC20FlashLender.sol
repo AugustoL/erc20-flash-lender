@@ -124,14 +124,6 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     /// @dev Prevents owner from setting excessive management fees
     uint256 public constant MAX_MANAGEMENT_FEE_PERCENTAGE = 500;
     
-    /// @notice Minimum management fee percentage that can be set (100 = 1% of LP fee)
-    /// @dev Ensures minimum protocol revenue
-    uint256 public constant MIN_MANAGEMENT_FEE_PERCENTAGE = 100;
-    
-    /// @notice Default management fee percentage (100 = 1% of LP fee)
-    /// @dev Used during initialization
-    uint256 public constant DEFAULT_MANAGEMENT_FEE_PERCENTAGE = 100;
-    
     /// @notice Maximum LP fee that can be set (100 = 1%)
     /// @dev Management fee is calculated as percentage of LP fee, so no separate total limit needed
     uint256 public constant MAX_LP_FEE_BPS = 100;
@@ -183,27 +175,25 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     
     /**
      * @notice Initializes the contract (replaces constructor for upgradeable contracts)
-     * @param _mgmtFeePercentage Management fee as percentage of LP fee (100 = 1%, 0 = use default)
+     * @param _mgmtFeePercentage Management fee as percentage of LP fee (0 = 0%, default is 0%)
      * @dev Can only be called once. Sets up OpenZeppelin components and initial fee
      */
     function initialize(uint256 _mgmtFeePercentage) public initializer {
-        // If 0 is passed, use default management fee percentage
-        uint256 mgmtFee = _mgmtFeePercentage == 0 ? DEFAULT_MANAGEMENT_FEE_PERCENTAGE : _mgmtFeePercentage;
-        require(mgmtFee >= MIN_MANAGEMENT_FEE_PERCENTAGE && mgmtFee <= MAX_MANAGEMENT_FEE_PERCENTAGE, "Mgmt fee out of range");
+        require(_mgmtFeePercentage <= MAX_MANAGEMENT_FEE_PERCENTAGE, "Mgmt fee out of range");
         __Ownable_init(msg.sender);
         __ReentrancyGuard_init();
-        managementFeePercentage = mgmtFee;
+        managementFeePercentage = _mgmtFeePercentage;
     }
 
     // ===================== OWNER FUNCTIONS =====================
     
     /**
      * @notice Updates the management fee rate (owner only)
-     * @param percentage New management fee as percentage of LP fee (100 = 1%, min 1%, max 5%)
+     * @param percentage New management fee as percentage of LP fee (0 = 0%, max 5%)
      * @dev Management fee is applied to all flash loans across all tokens
      */
     function setManagementFee(uint256 percentage) external onlyOwner {
-        require(percentage >= MIN_MANAGEMENT_FEE_PERCENTAGE && percentage <= MAX_MANAGEMENT_FEE_PERCENTAGE, "Fee out of range");
+        require(percentage <= MAX_MANAGEMENT_FEE_PERCENTAGE, "Fee out of range");
         uint256 oldFee = managementFeePercentage;
         managementFeePercentage = percentage;
         emit ManagementFeeChanged(oldFee, percentage);
@@ -509,8 +499,14 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
             // Distribute minimum fee proportionally based on fee rates
             uint256 totalFeeBps = currentLpFee + (currentLpFee * managementFeePercentage) / 10000;
             if (totalFeeBps > 0) {
-                lpFee = currentLpFee * 1 / totalFeeBps;
-                mgmtFee = 1 - lpFee;
+                if (managementFeePercentage > 0) {
+                    lpFee = currentLpFee * 1 / totalFeeBps;
+                    mgmtFee = 1 - lpFee;
+                } else {
+                    // If management fee is 0%, give all minimum fee to LP
+                    lpFee = 1;
+                    mgmtFee = 0;
+                }
             } else {
                 lpFee = 1;
                 mgmtFee = 0;
@@ -595,8 +591,14 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
             if (totalFee == 0 && amount >= MINIMUM_DEPOSIT) {
                 uint256 totalFeeBps = currentLpFee + (currentLpFee * managementFeePercentage) / 10000;
                 if (totalFeeBps > 0) {
-                    lpFee = currentLpFee * 1 / totalFeeBps;
-                    mgmtFee = 1 - lpFee;
+                    if (managementFeePercentage > 0) {
+                        lpFee = currentLpFee * 1 / totalFeeBps;
+                        mgmtFee = 1 - lpFee;
+                    } else {
+                        // If management fee is 0%, give all minimum fee to LP
+                        lpFee = 1;
+                        mgmtFee = 0;
+                    }
                 } else {
                     lpFee = 1;
                     mgmtFee = 0;
@@ -634,8 +636,14 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
             if (totalFee == 1 && (amount * currentLpFee) / 10000 == 0) {
                 uint256 totalFeeBps = currentLpFee + (currentLpFee * managementFeePercentage) / 10000;
                 if (totalFeeBps > 0) {
-                    lpFee = currentLpFee * 1 / totalFeeBps;
-                    mgmtFee = 1 - lpFee;
+                    if (managementFeePercentage > 0) {
+                        lpFee = currentLpFee * 1 / totalFeeBps;
+                        mgmtFee = 1 - lpFee;
+                    } else {
+                        // If management fee is 0%, give all minimum fee to LP
+                        lpFee = 1;
+                        mgmtFee = 0;
+                    }
                 } else {
                     lpFee = 1;
                     mgmtFee = 0;
