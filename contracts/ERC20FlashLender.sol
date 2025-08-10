@@ -50,6 +50,21 @@ interface IFlashLoanReceiver {
     function executeOperation(address token, uint256 amount, uint256 totalOwed, bytes calldata data) external returns (bool);
 }
 
+/**
+ * @notice Interface that multi-token flash loan receivers must implement
+ * @dev Contracts receiving multi-token flash loans must implement this interface
+ */
+interface IMultiFlashLoanReceiver {
+    /**
+     * @notice Called by the flash loan contract after transferring multiple tokens
+     * @param tokens Array of addresses of the borrowed tokens
+     * @param amounts Array of amounts of tokens borrowed (matches tokens array)
+     * @param totalOwed Array of total amounts that must be repaid (principal + fees for each token)
+     * @param data Arbitrary data passed from the flash loan initiator
+     */
+    function executeMultiOperation(address[] calldata tokens, uint256[] calldata amounts, uint256[] calldata totalOwed, bytes calldata data) external returns (bool);
+}
+
 contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
@@ -145,6 +160,9 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     
     /// @notice Emitted when a flash loan is executed
     event FlashLoan(address indexed borrower, address indexed token, uint256 amount, uint256 fee);
+    
+    /// @notice Emitted when a multi-token flash loan is executed
+    event MultiFlashLoan(address indexed borrower, address[] tokens, uint256[] amounts, uint256[] fees);
     
     /// @notice Emitted when the owner withdraws accumulated management fees
     event ManagementFeeWithdrawn(address indexed token, uint256 amount);
@@ -501,11 +519,11 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         }
         uint256 totalRepayment = amount + totalFee;
 
-        // Transfer borrowed tokens to receiver
-        IERC20(token).safeTransfer(receiver, amount);
-        
         // Record balance before loan to verify repayment
         uint256 balanceBefore = IERC20(token).balanceOf(address(this));
+
+        // Transfer borrowed tokens to receiver
+        IERC20(token).safeTransfer(receiver, amount);
 
         // Execute receiver's custom logic (arbitrage, liquidation, etc.)
         IFlashLoanReceiver(receiver).executeOperation(token, amount, totalRepayment, data);
@@ -513,13 +531,123 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         // Verify loan + fees were repaid
         uint256 balanceAfter = IERC20(token).balanceOf(address(this));
 
-        require(balanceAfter >= balanceBefore + amount + totalFee, "Flash loan not repaid");
+        require(balanceAfter >= balanceBefore + totalFee, "Flash loan not repaid");
 
         // Distribute fees: management fee to owner, LP fee increases pool value
         collectedManagementFees[token] += mgmtFee;
         totalLiquidity[token] += lpFee; // LP fees compound into pool, benefiting all LPs
         
         emit FlashLoan(msg.sender, token, amount, totalFee);
+    }
+    
+    /**
+     * @notice Execute a multi-token flash loan - borrow multiple tokens with no collateral, repay in same transaction
+     * @param tokens Array of addresses of the ERC20 tokens to borrow
+     * @param amounts Array of amounts to borrow (must match tokens array length)
+     * @param receiver Address of contract that will receive tokens and execute logic
+     * @param data Arbitrary data to pass to the receiver's executeMultiOperation function
+     * @dev The receiver must:
+     *      1. Implement IMultiFlashLoanReceiver interface
+     *      2. Have enough of each token to repay loans + fees after executeMultiOperation
+     *      3. Approve this contract to pull the repayments for all tokens
+     */
+    function flashLoanMultiple(
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        address receiver,
+        bytes calldata data
+    ) external nonReentrant {
+        require(receiver != address(0), "Invalid receiver");
+        require(tokens.length > 0, "No tokens specified");
+        require(tokens.length == amounts.length, "Arrays length mismatch");
+        require(tokens.length <= 20, "Too many tokens"); // Prevent gas limit issues
+        
+        // Verify receiver implements the required interface
+        require(_supportsMultiInterface(receiver), "Invalid receiver interface");
+        
+        // Arrays to store calculated fees and repayment amounts
+        uint256[] memory totalFees = new uint256[](tokens.length);
+        uint256[] memory totalRepayments = new uint256[](tokens.length);
+        uint256[] memory balancesBefore = new uint256[](tokens.length);
+        
+        // Validate all tokens and amounts first
+        for (uint256 i = 0; i < tokens.length; i++) {
+            address token = tokens[i];
+            uint256 amount = amounts[i];
+            
+            require(token != address(0), "Invalid token");
+            require(amount > 0, "Invalid amount");
+            require(amount <= totalLiquidity[token], "Not enough liquidity");
+            
+            // Check for duplicate tokens
+            for (uint256 j = i + 1; j < tokens.length; j++) {
+                require(tokens[i] != tokens[j], "Duplicate token");
+            }
+            
+            // Calculate fees for this token
+            uint256 currentLpFee = lpFeesBps[token] == 0 ? DEFAULT_LP_FEE_BPS : lpFeesBps[token];
+            
+            uint256 lpFee = (amount * currentLpFee) / 10000;
+            uint256 mgmtFee = (amount * currentLpFee * managementFeePercentage) / 100000000;
+            uint256 totalFee = lpFee + mgmtFee;
+            
+            // Apply minimum fee logic for larger amounts
+            if (totalFee == 0 && amount >= MINIMUM_DEPOSIT) {
+                uint256 totalFeeBps = currentLpFee + (currentLpFee * managementFeePercentage) / 10000;
+                if (totalFeeBps > 0) {
+                    lpFee = currentLpFee * 1 / totalFeeBps;
+                    mgmtFee = 1 - lpFee;
+                } else {
+                    lpFee = 1;
+                    mgmtFee = 0;
+                }
+                totalFee = 1;
+            }
+            
+            totalFees[i] = totalFee;
+            totalRepayments[i] = amount + totalFee;
+            
+            // Record balance before transfer
+            balancesBefore[i] = IERC20(token).balanceOf(address(this));
+
+            IERC20(tokens[i]).safeTransfer(receiver, amounts[i]);
+        }
+        
+        // Execute receiver's custom logic for all tokens
+        IMultiFlashLoanReceiver(receiver).executeMultiOperation(tokens, amounts, totalRepayments, data);
+        
+        // Verify all loans + fees were repaid and distribute fees
+        for (uint256 i = 0; i < tokens.length; i++) {
+            address token = tokens[i];
+            uint256 amount = amounts[i];
+            uint256 totalFee = totalFees[i];
+            
+            uint256 balanceAfter = IERC20(token).balanceOf(address(this));
+            require(balanceAfter >= balancesBefore[i] + totalFee, "Flash loan not repaid");
+
+            // Calculate individual fees for distribution
+            uint256 currentLpFee = lpFeesBps[token] == 0 ? DEFAULT_LP_FEE_BPS : lpFeesBps[token];
+            uint256 lpFee = (amount * currentLpFee) / 10000;
+            uint256 mgmtFee = totalFee - lpFee;
+            
+            // Handle minimum fee distribution
+            if (totalFee == 1 && (amount * currentLpFee) / 10000 == 0) {
+                uint256 totalFeeBps = currentLpFee + (currentLpFee * managementFeePercentage) / 10000;
+                if (totalFeeBps > 0) {
+                    lpFee = currentLpFee * 1 / totalFeeBps;
+                    mgmtFee = 1 - lpFee;
+                } else {
+                    lpFee = 1;
+                    mgmtFee = 0;
+                }
+            }
+            
+            // Distribute fees
+            collectedManagementFees[token] += mgmtFee;
+            totalLiquidity[token] += lpFee;
+        }
+        
+        emit MultiFlashLoan(msg.sender, tokens, amounts, totalFees);
     }
     
     // ===================== VIEW FUNCTIONS =====================
@@ -586,6 +714,32 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
             // Fallback: test if the contract has executeOperation function
             // Use EIP-165 compliant gas limit of 30,000 gas to prevent gas starvation attacks
             try IFlashLoanReceiver(receiver).executeOperation{gas: 30000}(address(0), 0, 0, "") {
+                return true; 
+            } catch {
+                return false;
+            }
+        }
+    }
+    
+    /**
+     * @notice Check if a contract implements the IMultiFlashLoanReceiver interface
+     * @param receiver Address of the potential multi flash loan receiver
+     * @return bool True if receiver supports the required interface
+     * @dev Uses ERC165 standard first, falls back to function existence check
+     *      This prevents flash loans to contracts that can't handle them properly
+     */
+    function _supportsMultiInterface(address receiver) private returns (bool) {
+        // Calculate interface ID manually for better compatibility
+        bytes4 interfaceId = bytes4(keccak256("executeMultiOperation(address[],uint256[],uint256[],bytes)"));
+        try IERC165(receiver).supportsInterface(interfaceId) returns (bool supported) {
+            return supported;
+        } catch {
+            // Fallback: test if the contract has executeMultiOperation function
+            // Use EIP-165 compliant gas limit of 30,000 gas to prevent gas starvation attacks
+            address[] memory emptyTokens = new address[](0);
+            uint256[] memory emptyAmounts = new uint256[](0);
+            uint256[] memory emptyOwed = new uint256[](0);
+            try IMultiFlashLoanReceiver(receiver).executeMultiOperation{gas: 30000}(emptyTokens, emptyAmounts, emptyOwed, "") {
                 return true; 
             } catch {
                 return false;

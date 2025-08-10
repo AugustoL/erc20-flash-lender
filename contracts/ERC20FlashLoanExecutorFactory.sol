@@ -64,4 +64,33 @@ contract ERC20FlashLoanExecutorFactory {
         
         return executor;
     }
+
+    /**
+     * @notice Create and execute a multi-token flash loan with multiple operations
+     * @param tokens Array of token addresses to borrow
+     * @param amounts Array of amounts to borrow (must match tokens array length)
+     * @param operations Array of operations to execute
+     * @return executor Address of the created executor contract
+     */
+    function createAndExecuteMultiFlashLoan(
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        ERC20FlashLoanExecutor.Operation[] calldata operations
+    ) external returns (address executor) {
+        // Create executor with factory as temporary owner
+        ERC20FlashLoanExecutor executorContract = new ERC20FlashLoanExecutor(
+            address(flashLender),
+            address(this) // Factory is temporary owner
+        );
+        
+        executor = address(executorContract);
+        
+        // Execute multi-token flash loan 
+        executorContract.executeMultiFlashLoan(tokens, amounts, operations);
+        
+        // Transfer ownership to the real user
+        executorContract.transferOwnership(msg.sender);
+        
+        return executor;
+    }
 }

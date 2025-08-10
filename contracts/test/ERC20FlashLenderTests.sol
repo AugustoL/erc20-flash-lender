@@ -67,3 +67,33 @@ contract ValidReceiver is IFlashLoanReceiver {
         return true;
     }
 }
+
+// Valid multi-token flash loan receiver for testing
+contract ValidMultiReceiver is IMultiFlashLoanReceiver {
+    
+    function executeMultiOperation(
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        uint256[] calldata totalOwed,
+        bytes calldata
+    ) external returns (bool) {
+        // For interface validation calls (with empty arrays), just return false
+        if (tokens.length == 0) {
+            return false;
+        }
+        
+        require(tokens.length == amounts.length, "Array length mismatch");
+        require(tokens.length == totalOwed.length, "Array length mismatch");
+        
+        // Repay all loans
+        for (uint256 i = 0; i < tokens.length; i++) {
+            require(tokens[i] != address(0), "Invalid token");
+            require(totalOwed[i] > 0, "Invalid total owed");
+            
+            // Transfer back the borrowed amount + fees for each token
+            IERC20(tokens[i]).transfer(msg.sender, totalOwed[i]);
+        }
+        
+        return true;
+    }
+}

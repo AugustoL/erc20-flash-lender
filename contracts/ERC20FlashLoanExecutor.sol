@@ -19,7 +19,7 @@ import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
  * @notice Flash loan executor that can perform multiple operations
  * @dev Gas optimized - users handle repayment directly to lender
  */
-contract ERC20FlashLoanExecutor is IFlashLoanReceiver, Ownable, ERC165 {
+contract ERC20FlashLoanExecutor is IFlashLoanReceiver, IMultiFlashLoanReceiver, Ownable, ERC165 {
     using SafeERC20 for IERC20;
 
     /// @notice The flash loan lender contract
@@ -63,6 +63,24 @@ contract ERC20FlashLoanExecutor is IFlashLoanReceiver, Ownable, ERC165 {
     }
 
     /**
+     * @notice Execute a multi-token flash loan with multiple operations
+     * @param _tokens Array of token addresses to borrow
+     * @param _amounts Array of amounts to borrow (must match tokens array length)
+     * @param _operations Array of operations to execute
+     */
+    function executeMultiFlashLoan(
+        address[] calldata _tokens,
+        uint256[] calldata _amounts,
+        Operation[] calldata _operations
+    ) external onlyOwner {
+        // Encode operations into calldata
+        bytes memory data = abi.encode(_operations);
+        
+        // Execute multi-token flash loan
+        flashLender.flashLoanMultiple(_tokens, _amounts, address(this), data);
+    }
+
+    /**
      * @notice Called by the flash loan contract after transferring funds
      * @param token Address of the borrowed token
      * @param amount Amount of tokens borrowed
@@ -86,6 +104,36 @@ contract ERC20FlashLoanExecutor is IFlashLoanReceiver, Ownable, ERC165 {
         }
 
         // User is responsible for repaying the flash loan directly to the lender
+        // in their operations for maximum gas efficiency. The flash lender will
+        // validate repayment and revert if insufficient funds were transferred.
+
+        return true;
+    }
+
+    /**
+     * @notice Called by the flash loan contract after transferring multiple tokens
+     * @param tokens Array of addresses of the borrowed tokens
+     * @param amounts Array of amounts of tokens borrowed (matches tokens array)
+     * @param totalOwed Array of total amounts that must be repaid (principal + fees for each token)
+     * @param data Encoded operations to execute
+     */
+    function executeMultiOperation(
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        uint256[] calldata totalOwed,
+        bytes calldata data
+    ) external override returns (bool) {
+        require(msg.sender == address(flashLender), "Only flash lender can call");
+        
+        // Decode operations from data
+        Operation[] memory operations = abi.decode(data, (Operation[]));
+        
+        // Execute all operations
+        for (uint256 i = 0; i < operations.length; i++) {
+            _executeOperation(operations[i]);
+        }
+
+        // User is responsible for repaying all flash loans directly to the lender
         // in their operations for maximum gas efficiency. The flash lender will
         // validate repayment and revert if insufficient funds were transferred.
 
@@ -138,6 +186,7 @@ contract ERC20FlashLoanExecutor is IFlashLoanReceiver, Ownable, ERC165 {
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             interfaceId == type(IFlashLoanReceiver).interfaceId ||
+            interfaceId == type(IMultiFlashLoanReceiver).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 }

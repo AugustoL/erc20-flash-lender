@@ -7,6 +7,7 @@ A flash loan protocol for ERC20 tokens with proportional fee sharing among liqui
 ## Features
 
 - 🚀 **Flash Loans**: Instant, uncollateralized loans for MEV operations
+- 🎯 **Multi-Token Flash Loans**: Borrow multiple tokens simultaneously in a single transaction
 - 💰 **Fee Sharing**: Proportional fee distribution among liquidity providers
 - 🗳️ **Democratic Governance**: LPs vote on fee rates with share-weighted voting
 - ⏰ **Delayed Execution**: 10-block delay for governance decisions
@@ -14,6 +15,7 @@ A flash loan protocol for ERC20 tokens with proportional fee sharing among liqui
 - ⚡ **Ultra-Low Fees**: Default 0.01% LP fee with 1% of it as management fee (as % of LP fee)
 - 🔧 **Upgradeable**: Built with OpenZeppelin's upgradeable contracts
 - 📊 **Share-Based**: Fair fee distribution using share-based accounting with virtual shares protection
+- 🔄 **Advanced Executors**: Gas-optimized executor contracts for complex multi-step operations
 
 ## Return on Investment (ROI) Analysis
 
@@ -129,7 +131,8 @@ npm run deploy:mainnet
 
 - `deposit(token, amount)` - Deposit tokens to earn fees
 - `withdraw(token)` - Withdraw principal + accumulated fees  
-- `flashLoan(token, amount, receiver, data)` - Execute flash loan
+- `flashLoan(token, amount, receiver, data)` - Execute single-token flash loan
+- `flashLoanMultiple(tokens[], amounts[], receiver, data)` - Execute multi-token flash loan
 
 ### Admin Functions
 
@@ -199,7 +202,8 @@ A reusable contract that can execute multiple operations within a single flash l
 - ⚡ **Gas Optimized**: Users handle repayment directly to save gas
 
 **Functions:**
-- `executeFlashLoan(token, amount, operations[])` - Execute flash loan with multiple operations
+- `executeFlashLoan(token, amount, operations[])` - Execute single-token flash loan with multiple operations
+- `executeMultiFlashLoan(tokens[], amounts[], operations[])` - Execute multi-token flash loan with multiple operations
 - `executeCall(target, data, value)` - Execute arbitrary calls as owner (post-flash loan)
 - `getFlashLender()` - Get the lender address for direct repayment
 - `supportsInterface(interfaceId)` - Check interface support
@@ -220,7 +224,8 @@ A factory contract that creates and manages flash loan executors with flexible d
 
 **Functions:**
 - `createExecutor()` - Create a standalone executor with caller as owner (reusable)
-- `createAndExecuteFlashLoan(token, amount, operations[])` - Create executor and execute flash loan in one transaction
+- `createAndExecuteFlashLoan(token, amount, operations[])` - Create executor and execute single-token flash loan in one transaction
+- `createAndExecuteMultiFlashLoan(tokens[], amounts[], operations[])` - Create executor and execute multi-token flash loan in one transaction
 
 ### Operation Structure
 
@@ -360,6 +365,178 @@ bytes memory data = abi.encode(someParams);
 lender.flashLoan(token, amount, receiver, data);
 ```
 
+## Multi-Token Flash Loans
+
+The protocol supports borrowing multiple different tokens simultaneously in a single transaction, enabling sophisticated arbitrage and liquidation strategies that require temporary access to diverse assets.
+
+### 🎯 Key Features
+
+- **🚀 Atomic Multi-Token Operations**: Borrow multiple ERC20 tokens in one transaction
+- **💼 Portfolio Arbitrage**: Execute complex strategies across multiple token pairs
+- **⚡ Gas Efficient**: Single transaction for multiple token operations
+- **🛡️ Same Security**: All single-token protections apply to each token individually
+- **🔍 Duplicate Protection**: Automatic detection and rejection of duplicate tokens
+- **📊 Individual Fee Calculation**: Each token uses its own LP fee rate and liquidity
+- **⛽ Gas Limit Protection**: Maximum 20 tokens per transaction to prevent gas issues
+
+### Multi-Token Interface
+
+Contracts receiving multi-token flash loans must implement `IMultiFlashLoanReceiver`:
+
+```solidity
+interface IMultiFlashLoanReceiver {
+    function executeMultiOperation(
+        address[] calldata tokens,     // Array of borrowed token addresses
+        uint256[] calldata amounts,    // Array of borrowed amounts (matches tokens)
+        uint256[] calldata totalOwed,  // Array of repayment amounts (principal + fees)
+        bytes calldata data           // Arbitrary data from flash loan initiator
+    ) external returns (bool);
+}
+```
+
+### Usage Examples
+
+#### Basic Multi-Token Flash Loan
+
+```solidity
+contract MultiTokenArbitrage is IMultiFlashLoanReceiver {
+    function executeMultiOperation(
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        uint256[] calldata totalOwed,
+        bytes calldata data
+    ) external override returns (bool) {
+        // Your multi-token arbitrage logic here
+        // Example: Cross-DEX arbitrage with ETH, USDC, and DAI
+        
+        // 1. Use borrowed tokens for arbitrage operations
+        performArbitrageAcrossMultipleDEXs(tokens, amounts);
+        
+        // 2. Ensure each token is repaid
+        for (uint256 i = 0; i < tokens.length; i++) {
+            IERC20(tokens[i]).transfer(msg.sender, totalOwed[i]);
+        }
+        
+        return true;
+    }
+}
+
+// Execute multi-token flash loan
+address[] memory tokens = new address[](3);
+tokens[0] = wethAddress;
+tokens[1] = usdcAddress; 
+tokens[2] = daiAddress;
+
+uint256[] memory amounts = new uint256[](3);
+amounts[0] = ethers.parseEther("10");      // 10 WETH
+amounts[1] = 20000 * 10**6;                // 20,000 USDC
+amounts[2] = ethers.parseEther("15000");   // 15,000 DAI
+
+bytes memory data = abi.encode(arbitrageParams);
+lender.flashLoanMultiple(tokens, amounts, receiver, data);
+```
+
+#### Advanced Executor Usage
+
+```solidity
+// Multi-token flash loan with executor for complex operations
+address[] memory tokens = new address[](2);
+tokens[0] = tokenA;
+tokens[1] = tokenB;
+
+uint256[] memory amounts = new uint256[](2);
+amounts[0] = ethers.parseEther("1000");
+amounts[1] = ethers.parseEther("500");
+
+ERC20FlashLoanExecutor.Operation[] memory operations = new ERC20FlashLoanExecutor.Operation[](4);
+
+// 1. Swap tokenA on DEX 1
+operations[0] = ERC20FlashLoanExecutor.Operation({
+    target: dex1Address,
+    data: abi.encodeWithSignature("swap(address,address,uint256)", tokenA, tokenB, amounts[0]),
+    value: 0
+});
+
+// 2. Perform complex liquidation with tokenB
+operations[1] = ERC20FlashLoanExecutor.Operation({
+    target: lendingProtocolAddress,
+    data: abi.encodeWithSignature("liquidate(address,uint256)", user, amounts[1]),
+    value: 0
+});
+
+// 3. Repay tokenA loan + fees directly to lender (gas optimized)
+operations[2] = ERC20FlashLoanExecutor.Operation({
+    target: tokenA,
+    data: abi.encodeWithSignature("transfer(address,uint256)", lenderAddress, totalOwedA),
+    value: 0
+});
+
+// 4. Repay tokenB loan + fees directly to lender (gas optimized)
+operations[3] = ERC20FlashLoanExecutor.Operation({
+    target: tokenB,
+    data: abi.encodeWithSignature("transfer(address,uint256)", lenderAddress, totalOwedB),
+    value: 0
+});
+
+// Execute via factory (create and execute in one transaction)
+address executor = factory.createAndExecuteMultiFlashLoan(tokens, amounts, operations);
+```
+
+### Validation and Limits
+
+```solidity
+// Multi-token flash loan validations:
+require(tokens.length > 0, "No tokens specified");
+require(tokens.length == amounts.length, "Arrays length mismatch");
+require(tokens.length <= 20, "Too many tokens");  // Gas limit protection
+
+// For each token:
+require(token != address(0), "Invalid token");
+require(amount > 0, "Invalid amount");
+require(amount <= totalLiquidity[token], "Not enough liquidity");
+
+// Duplicate token detection:
+for (uint256 j = i + 1; j < tokens.length; j++) {
+    require(tokens[i] != tokens[j], "Duplicate token");
+}
+```
+
+### Fee Structure
+
+Each token in a multi-token flash loan is charged fees independently:
+
+```solidity
+// For each token in the multi-token loan:
+uint256 lpFee = (amount * currentLpFee) / 10000;  // Token-specific LP fee
+uint256 mgmtFee = (amount * currentLpFee * managementFeePercentage) / 100000000;
+uint256 totalFee = lpFee + mgmtFee;
+
+// Each token must be repaid: borrowed_amount + calculated_fee
+uint256 repaymentRequired = amount + totalFee;
+```
+
+### Use Cases
+
+- **🔄 Cross-DEX Arbitrage**: Arbitrage opportunities requiring multiple tokens
+- **💱 Complex Liquidations**: Liquidations involving multiple collateral types
+- **🔄 Portfolio Rebalancing**: Rebalancing strategies across multiple assets
+- **⚖️ Cross-Protocol Operations**: Moving positions across different DeFi protocols
+- **🏦 Multi-Asset Refinancing**: Refinancing loans across multiple tokens simultaneously
+- **📊 Statistical Arbitrage**: Pairs trading and correlation-based strategies
+
+### Security Considerations
+
+All single-token security measures apply to each token individually in multi-token flash loans:
+
+- ✅ **Individual Balance Tracking**: Each token's balance is verified separately
+- ✅ **Per-Token Fee Calculation**: Fees calculated based on each token's LP fee rate
+- ✅ **Interface Validation**: Receiver must implement `IMultiFlashLoanReceiver`
+- ✅ **Reentrancy Protection**: Inherited from single-token implementation
+- ✅ **Gas Limit Protection**: Maximum 20 tokens to prevent out-of-gas errors
+- ✅ **Duplicate Detection**: Prevents borrowing the same token multiple times
+
+```
+
 ## Development
 
 ### Environment Setup
@@ -406,9 +583,11 @@ ERC20FlashLender
 │   ├── Share-based accounting with virtual shares (1000 virtual shares)
 │   └── Precision attack protections
 ├── Flash Loans
-│   ├── flashLoan() - Execute loan
-│   ├── Interface validation
+│   ├── flashLoan() - Execute single-token loan
+│   ├── flashLoanMultiple() - Execute multi-token loan (up to 20 tokens)
+│   ├── Interface validation (IFlashLoanReceiver & IMultiFlashLoanReceiver)
 │   ├── Fee collection with precision fixes
+│   ├── Duplicate token detection
 │   └── Minimum fee enforcement for large loans
 ├── LP Governance
 │   ├── voteForLPFee() - Share-weighted voting (including virtual shares)
@@ -422,6 +601,7 @@ ERC20FlashLender
     ├── Virtual shares dilution (VIRTUAL_SHARES = 1000)
     ├── Minimum deposit enforcement (MINIMUM_DEPOSIT = 1e8)
     ├── Fixed fee dust accumulation (ENTRY_EXIT_FEE = 100 wei)
+    ├── Multi-token validation and gas limits
     └── Withdrawal validation and thresholds
 ```
 
@@ -434,7 +614,7 @@ ERC20FlashLender
 - ❌ **No professional security audit performed**
 - ✅ **AI-assisted code review completed**
 - ✅ **Built on OpenZeppelin's audited contracts**
-- ✅ **Comprehensive test suite (48 passing tests)**
+- ✅ **Comprehensive test suite (75+ passing tests)**
 - ✅ **Security best practices implemented**
 - ✅ **Precision attack protections implemented**
 

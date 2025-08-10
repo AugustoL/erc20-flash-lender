@@ -634,6 +634,376 @@ describe("ERC20FlashLoanExecutor", function () {
     });
   });
 
+  describe("Multi-Token Flash Loans", function () {
+    // Helper function for multi-token fixtures
+    async function deployMultiTokenFixture() {
+      const fixture = await deployFactoryFixture();
+      
+      // Deploy a second token for multi-token testing
+      const MockERC20 = await ethers.getContractFactory("MockERC20");
+      const token2 = await MockERC20.deploy(ethers.parseEther("1000000"));
+      await token2.waitForDeployment();
+      
+      // Setup second token balances and liquidity
+      const initialBalance = ethers.parseEther("10000");
+      await token2.transfer(fixture.user1.address, initialBalance);
+      await token2.transfer(fixture.user2.address, initialBalance);
+      
+      // Add liquidity for second token
+      const liquidityAmount = ethers.parseEther("1000");
+      await token2.approve(await fixture.lender.getAddress(), liquidityAmount);
+      await fixture.lender.deposit(await token2.getAddress(), liquidityAmount);
+      
+      return { ...fixture, token2 };
+    }
+
+    it("Should execute multi-token flash loan successfully", async function () {
+      const { factory, lender, token, token2, simpleTarget, user1 } = await loadFixture(deployMultiTokenFixture);
+      
+      const loanAmount1 = ethers.parseEther("100");
+      const loanAmount2 = ethers.parseEther("50");
+      
+      // Calculate fees for both tokens
+      const { totalFee: totalFee1 } = calculateFlashLoanFees(loanAmount1);
+      const { totalFee: totalFee2 } = calculateFlashLoanFees(loanAmount2);
+      const totalNeeded1 = loanAmount1 + totalFee1;
+      const totalNeeded2 = loanAmount2 + totalFee2;
+      
+      // Pre-fund the simpleTarget for both tokens
+      await token.transfer(await simpleTarget.getAddress(), totalNeeded1);
+      await token2.transfer(await simpleTarget.getAddress(), totalNeeded2);
+      
+      const tokens = [await token.getAddress(), await token2.getAddress()];
+      const amounts = [loanAmount1, loanAmount2];
+      
+      const operations = [
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("setValue", [123]),
+          value: 0
+        },
+        // Repay first token
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token.getAddress(),
+            await lender.getAddress(),
+            totalNeeded1
+          ]),
+          value: 0
+        },
+        // Repay second token
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token2.getAddress(),
+            await lender.getAddress(),
+            totalNeeded2
+          ]),
+          value: 0
+        }
+      ];
+      
+      await expect(factory.connect(user1).createAndExecuteMultiFlashLoan(
+        tokens,
+        amounts,
+        operations
+      )).to.not.be.reverted;
+      
+      // Verify the operation was executed
+      expect(await simpleTarget.value()).to.equal(123);
+    });
+
+    it("Should handle different amounts for different tokens", async function () {
+      const { factory, lender, token, token2, simpleTarget, user1 } = await loadFixture(deployMultiTokenFixture);
+      
+      const loanAmount1 = ethers.parseEther("200");
+      const loanAmount2 = ethers.parseEther("75");
+      
+      const { totalFee: totalFee1 } = calculateFlashLoanFees(loanAmount1);
+      const { totalFee: totalFee2 } = calculateFlashLoanFees(loanAmount2);
+      const totalNeeded1 = loanAmount1 + totalFee1;
+      const totalNeeded2 = loanAmount2 + totalFee2;
+      
+      // Pre-fund the simpleTarget
+      await token.transfer(await simpleTarget.getAddress(), totalNeeded1);
+      await token2.transfer(await simpleTarget.getAddress(), totalNeeded2);
+      
+      const tokens = [await token.getAddress(), await token2.getAddress()];
+      const amounts = [loanAmount1, loanAmount2];
+      
+      const operations = [
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("setValue", [456]),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token.getAddress(),
+            await lender.getAddress(),
+            totalNeeded1
+          ]),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token2.getAddress(),
+            await lender.getAddress(),
+            totalNeeded2
+          ]),
+          value: 0
+        }
+      ];
+      
+      await expect(factory.connect(user1).createAndExecuteMultiFlashLoan(
+        tokens,
+        amounts,
+        operations
+      )).to.not.be.reverted;
+      
+      expect(await simpleTarget.value()).to.equal(456);
+    });
+
+    it("Should reject multi-token flash loan with mismatched array lengths", async function () {
+      const { factory, token, token2, user1 } = await loadFixture(deployMultiTokenFixture);
+      
+      const tokens = [await token.getAddress(), await token2.getAddress()];
+      const amounts = [ethers.parseEther("100")]; // Mismatched length
+      const operations: { target: string; data: string; value: number; }[] = [];
+      
+      await expect(factory.connect(user1).createAndExecuteMultiFlashLoan(
+        tokens,
+        amounts,
+        operations
+      )).to.be.revertedWith("Arrays length mismatch");
+    });
+
+    it("Should reject multi-token flash loan with duplicate tokens", async function () {
+      const { factory, token, simpleTarget, user1 } = await loadFixture(deployMultiTokenFixture);
+      
+      const tokens = [await token.getAddress(), await token.getAddress()]; // Duplicate
+      const amounts = [ethers.parseEther("100"), ethers.parseEther("50")];
+      const operations: { target: string; data: string; value: number; }[] = [];
+      
+      await expect(factory.connect(user1).createAndExecuteMultiFlashLoan(
+        tokens,
+        amounts,
+        operations
+      )).to.be.revertedWith("Duplicate token");
+    });
+
+    it("Should reject multi-token flash loan with insufficient liquidity for one token", async function () {
+      const { factory, lender, token, token2, user1 } = await loadFixture(deployMultiTokenFixture);
+      
+      const tokens = [await token.getAddress(), await token2.getAddress()];
+      const amounts = [ethers.parseEther("100"), ethers.parseEther("2000")]; // Second amount too large
+      const operations: { target: string; data: string; value: number; }[] = [];
+      
+      await expect(factory.connect(user1).createAndExecuteMultiFlashLoan(
+        tokens,
+        amounts,
+        operations
+      )).to.be.revertedWith("Not enough liquidity");
+    });
+
+    it("Should reject multi-token flash loan if repayment fails for any token", async function () {
+      const { factory, lender, token, token2, simpleTarget, user1 } = await loadFixture(deployMultiTokenFixture);
+      
+      const loanAmount1 = ethers.parseEther("100");
+      const loanAmount2 = ethers.parseEther("50");
+      
+      const { totalFee: totalFee1 } = calculateFlashLoanFees(loanAmount1);
+      const { totalFee: totalFee2 } = calculateFlashLoanFees(loanAmount2);
+      const totalNeeded1 = loanAmount1 + totalFee1;
+      const totalNeeded2 = loanAmount2 + totalFee2;
+      
+      // Only fund for first token, not second
+      await token.transfer(await simpleTarget.getAddress(), totalNeeded1);
+      // Deliberately don't fund second token
+      
+      const tokens = [await token.getAddress(), await token2.getAddress()];
+      const amounts = [loanAmount1, loanAmount2];
+      
+      const operations = [
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token.getAddress(),
+            await lender.getAddress(),
+            totalNeeded1
+          ]),
+          value: 0
+        }
+        // Note: No repayment for second token
+      ];
+      
+      await expect(factory.connect(user1).createAndExecuteMultiFlashLoan(
+        tokens,
+        amounts,
+        operations
+      )).to.be.revertedWith("Flash loan not repaid");
+    });
+
+    it("Should reject multi-token flash loan with too many tokens", async function () {
+      const { factory, token, user1 } = await loadFixture(deployMultiTokenFixture);
+      
+      // Create array with 21 tokens (exceeds limit of 20)
+      const tokens = new Array(21).fill(await token.getAddress());
+      const amounts = new Array(21).fill(ethers.parseEther("1"));
+      const operations: { target: string; data: string; value: number; }[] = [];
+      
+      await expect(factory.connect(user1).createAndExecuteMultiFlashLoan(
+        tokens,
+        amounts,
+        operations
+      )).to.be.revertedWith("Too many tokens");
+    });
+
+    it("Should execute complex multi-token arbitrage scenario", async function () {
+      const { factory, lender, token, token2, simpleTarget, user1 } = await loadFixture(deployMultiTokenFixture);
+      
+      const loanAmount1 = ethers.parseEther("300");
+      const loanAmount2 = ethers.parseEther("150");
+      
+      const { totalFee: totalFee1 } = calculateFlashLoanFees(loanAmount1);
+      const { totalFee: totalFee2 } = calculateFlashLoanFees(loanAmount2);
+      const totalNeeded1 = loanAmount1 + totalFee1;
+      const totalNeeded2 = loanAmount2 + totalFee2;
+      
+      // Simulate profitable trades - provide extra tokens as "profit"
+      const profit1 = ethers.parseEther("10");
+      const profit2 = ethers.parseEther("5");
+      await token.transfer(await simpleTarget.getAddress(), totalNeeded1 + profit1);
+      await token2.transfer(await simpleTarget.getAddress(), totalNeeded2 + profit2);
+      
+      const tokens = [await token.getAddress(), await token2.getAddress()];
+      const amounts = [loanAmount1, loanAmount2];
+      
+      const operations = [
+        // Simulate arbitrage operations
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("setValue", [999]),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("increment"),
+          value: 0
+        },
+        // Repay loans
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token.getAddress(),
+            await lender.getAddress(),
+            totalNeeded1
+          ]),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token2.getAddress(),
+            await lender.getAddress(),
+            totalNeeded2
+          ]),
+          value: 0
+        },
+        // Keep profits
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token.getAddress(),
+            user1.address,
+            profit1
+          ]),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token2.getAddress(),
+            user1.address,
+            profit2
+          ]),
+          value: 0
+        }
+      ];
+      
+      const user1Token1BalanceBefore = await token.balanceOf(user1.address);
+      const user1Token2BalanceBefore = await token2.balanceOf(user1.address);
+      
+      await expect(factory.connect(user1).createAndExecuteMultiFlashLoan(
+        tokens,
+        amounts,
+        operations
+      )).to.not.be.reverted;
+      
+      // Verify operations executed
+      expect(await simpleTarget.value()).to.equal(1000); // 999 + 1 increment
+      
+      // Verify profits were transferred
+      expect(await token.balanceOf(user1.address)).to.equal(user1Token1BalanceBefore + profit1);
+      expect(await token2.balanceOf(user1.address)).to.equal(user1Token2BalanceBefore + profit2);
+    });
+
+    it("Should properly handle fees for multi-token flash loans", async function () {
+      const { factory, lender, token, token2, simpleTarget, user1, owner } = await loadFixture(deployMultiTokenFixture);
+      
+      const loanAmount1 = ethers.parseEther("1000");
+      const loanAmount2 = ethers.parseEther("500");
+      
+      const { lpFee: lpFee1, mgmtFee: mgmtFee1, totalFee: totalFee1 } = calculateFlashLoanFees(loanAmount1);
+      const { lpFee: lpFee2, mgmtFee: mgmtFee2, totalFee: totalFee2 } = calculateFlashLoanFees(loanAmount2);
+      
+      // Pre-fund for repayment
+      await token.transfer(await simpleTarget.getAddress(), loanAmount1 + totalFee1);
+      await token2.transfer(await simpleTarget.getAddress(), loanAmount2 + totalFee2);
+      
+      // Record balances before
+      const token1LiquidityBefore = await lender.totalLiquidity(await token.getAddress());
+      const token2LiquidityBefore = await lender.totalLiquidity(await token2.getAddress());
+      const token1MgmtFeesBefore = await lender.collectedManagementFees(await token.getAddress());
+      const token2MgmtFeesBefore = await lender.collectedManagementFees(await token2.getAddress());
+      
+      const tokens = [await token.getAddress(), await token2.getAddress()];
+      const amounts = [loanAmount1, loanAmount2];
+      
+      const operations = [
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token.getAddress(),
+            await lender.getAddress(),
+            loanAmount1 + totalFee1
+          ]),
+          value: 0
+        },
+        {
+          target: await simpleTarget.getAddress(),
+          data: simpleTarget.interface.encodeFunctionData("sendTokensTo", [
+            await token2.getAddress(),
+            await lender.getAddress(),
+            loanAmount2 + totalFee2
+          ]),
+          value: 0
+        }
+      ];
+      
+      await factory.connect(user1).createAndExecuteMultiFlashLoan(tokens, amounts, operations);
+      
+      // Verify fees were collected correctly for both tokens
+      expect(await lender.totalLiquidity(await token.getAddress())).to.equal(token1LiquidityBefore + lpFee1);
+      expect(await lender.totalLiquidity(await token2.getAddress())).to.equal(token2LiquidityBefore + lpFee2);
+      expect(await lender.collectedManagementFees(await token.getAddress())).to.equal(token1MgmtFeesBefore + mgmtFee1);
+      expect(await lender.collectedManagementFees(await token2.getAddress())).to.equal(token2MgmtFeesBefore + mgmtFee2);
+    });
+  });
+
   describe("Error Handling", function () {
     it("Should handle empty operations array (should fail without funding)", async function () {
       const { factory, token, user1 } = await loadFixture(deployFactoryFixture);
