@@ -9,6 +9,7 @@ A flash loan protocol for ERC20 tokens with proportional fee sharing among liqui
 - 🚀 **Flash Loans**: Instant, uncollateralized loans for MEV operations
 - 🎯 **Multi-Token Flash Loans**: Borrow multiple tokens simultaneously in a single transaction
 - 💰 **Fee Sharing**: Proportional fee distribution among liquidity providers
+- 🆕 **Fee Harvesting**: Withdraw earned fees while keeping principal staked for compound growth
 - 🗳️ **Democratic Governance**: LPs vote on fee rates with share-weighted voting
 - ⏰ **Delayed Execution**: 10-block delay for governance decisions
 - 🛡️ **Security First**: Comprehensive protection against precision attacks and common DeFi exploits
@@ -131,6 +132,7 @@ npm run deploy:mainnet
 
 - `deposit(token, amount)` - Deposit tokens to earn fees
 - `withdraw(token)` - Withdraw principal + accumulated fees  
+- `withdrawFees(token)` - **NEW**: Withdraw only fees while keeping principal staked
 - `flashLoan(token, amount, receiver, data)` - Execute single-token flash loan
 - `flashLoanMultiple(tokens[], amounts[], receiver, data)` - Execute multi-token flash loan
 
@@ -310,6 +312,58 @@ ERC20FlashLoanExecutor(executor).executeCall(target, data, value);
 
 📖 **For comprehensive documentation, examples, and gas cost analysis, see [docs/FlashLoanExecutor.md](docs/FlashLoanExecutor.md)**
 
+## 🆕 Fee-Only Withdrawals
+
+The protocol now supports **fee harvesting** - LPs can withdraw their earned fees while keeping their principal deposit staked and continuing to earn on their position.
+
+### 🎯 Key Benefits
+
+- **💰 Harvest Profits**: Withdraw accumulated fees without unstaking principal
+- **🔄 Compound Growth**: Keep principal earning while taking periodic profits  
+- **⚡ Gas Efficient**: Single transaction vs withdraw + redeposit cycle
+- **🗳️ Maintain Governance**: Keep voting power proportional to remaining stake
+- **📊 Flexible Strategy**: Enable various yield strategies and profit-taking approaches
+
+### 🔧 How It Works
+
+When you call `withdrawFees(token)`:
+
+1. **Calculate Fees**: Uses same logic as `getWithdrawableAmount()` to determine earned fees
+2. **Apply Exit Fee**: Deducts 100 wei exit fee from fee portion (not principal)
+3. **Reduce Shares**: Proportionally reduces your shares to maintain fair pool economics
+4. **Keep Principal**: Your recorded deposit amount stays unchanged
+5. **Update Voting**: Adjusts governance voting power for reduced shares
+6. **Transfer Fees**: Sends net fee amount to your address
+
+### 💡 Example Scenario
+
+```solidity
+// Initial state: You deposited 1000 tokens, now worth 1050 tokens (50 tokens fees earned)
+
+// Before withdrawFees():
+// - Shares: 1000 (example)
+// - Principal: 1000 tokens  
+// - Total Value: 1050 tokens
+// - Fees Earned: 50 tokens
+
+lender.withdrawFees(token);
+
+// After withdrawFees():
+// - Shares: ~952 (reduced proportionally) 
+// - Principal: 1000 tokens (unchanged)
+// - Total Value: ~1000 tokens (back to principal)
+// - Your Balance: +49.9 tokens (50 - 0.1 exit fee)
+// - Status: Still earning on 1000 token principal with ~952 shares
+```
+
+### ⚙️ Technical Details
+
+- **Minimum Fee**: Fees must be > 100 wei after exit fee to withdraw
+- **Share Calculation**: `sharesToRemove = userShares * (feeWithdrawal / totalValue)`
+- **Vote Weight**: Automatically updates governance voting power
+- **Gas Optimized**: Reuses `getWithdrawableAmount()` logic to avoid code duplication
+- **Safe Math**: Uses high precision arithmetic to prevent rounding issues
+
 ## Usage Examples
 
 ### For Liquidity Providers
@@ -337,7 +391,12 @@ lender.executeLPFeeChange(token, 25); // Execute approved change
 (uint256 netAmount, uint256 grossAmount, uint256 principal, uint256 fees, uint256 exitFee) = 
     lender.getWithdrawableAmount(token, msg.sender);
 
-// Withdraw everything (100 wei exit fee stays in pool)
+// Option 1: Withdraw only fees (keep principal staked) 🆕
+if (fees > exitFee) {
+    lender.withdrawFees(token); // Harvest fees, keep earning on principal
+}
+
+// Option 2: Withdraw everything (100 wei exit fee stays in pool)
 // Note: Withdrawal may be rejected if net amount < MINIMUM_DEPOSIT after exit fee
 lender.withdraw(token);
 ```

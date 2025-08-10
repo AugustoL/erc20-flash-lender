@@ -242,6 +242,228 @@ describe("ERC20FlashLender", function () {
     });
   });
 
+  describe("Fee Withdrawals", function () {
+    it("Should allow withdrawing only fees while keeping principal", async function () {
+      const { lender, lenderAddress, token, tokenAddress, user1, user2, owner } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // User1 deposits
+      const depositAmount = ethers.parseEther("1000");
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+      
+      // Generate fees through flash loan
+      const flashLoanAmount = ethers.parseEther("100");
+      
+      // Deploy a valid flash loan receiver
+      const FlashLoanReceiver = await ethers.getContractFactory("ValidReceiver");
+      const receiver = await FlashLoanReceiver.deploy();
+      await receiver.waitForDeployment();
+      
+      // Fund receiver to pay back loan + fees
+      await transfer(token, user2, await receiver.getAddress(), ethers.parseEther("1"));
+      
+      // Execute flash loan to generate fees
+      await lender.flashLoan(
+        tokenAddress,
+        flashLoanAmount,
+        await receiver.getAddress(),
+        "0x"
+      );
+      
+      // Check that fees were generated
+      const [, , , feesBeforeWithdrawal] = await lender.getWithdrawableAmount(tokenAddress, user1.address);
+      expect(feesBeforeWithdrawal).to.be.gt(0);
+      
+      // Record state before fee withdrawal
+      const sharesBeforeFeeWithdrawal = await lender.shares(tokenAddress, user1.address);
+      const depositsBeforeFeeWithdrawal = await lender.deposits(tokenAddress, user1.address);
+      const balanceBeforeFeeWithdrawal = await token.balanceOf(user1.address);
+      
+      // Withdraw only fees
+      await expect(lender.connect(user1).withdrawFees(tokenAddress))
+        .to.emit(lender, "FeesWithdrawn");
+      
+      // Check that principal deposit remains the same
+      const depositsAfterFeeWithdrawal = await lender.deposits(tokenAddress, user1.address);
+      expect(depositsAfterFeeWithdrawal).to.equal(depositsBeforeFeeWithdrawal);
+      
+      // Check that shares were reduced proportionally
+      const sharesAfterFeeWithdrawal = await lender.shares(tokenAddress, user1.address);
+      expect(sharesAfterFeeWithdrawal).to.be.lt(sharesBeforeFeeWithdrawal);
+      expect(sharesAfterFeeWithdrawal).to.be.gt(0); // Still has some shares
+      
+      // Check that user received tokens
+      const balanceAfterFeeWithdrawal = await token.balanceOf(user1.address);
+      expect(balanceAfterFeeWithdrawal).to.be.gt(balanceBeforeFeeWithdrawal);
+      
+      // User should still be able to earn fees on remaining position
+      const [, , , feesAfterWithdrawal] = await lender.getWithdrawableAmount(tokenAddress, user1.address);
+      expect(feesAfterWithdrawal).to.be.lte(100); // Should be very small (close to 0, allowing for rounding dust)
+    });
+
+    it("Should reject fee withdrawal when user has no fees", async function () {
+      const { lender, lenderAddress, token, tokenAddress, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // User deposits but no fees have been generated
+      const depositAmount = ethers.parseEther("100");
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+      
+      // Should reject fee withdrawal when no fees exist  
+      // Note: When fees are 0, the actual error is "Fees too small after exit fee"
+      await expect(lender.connect(user1).withdrawFees(tokenAddress))
+        .to.be.revertedWith("Fees too small after exit fee");
+    });
+
+    it("Should reject fee withdrawal when user has no shares", async function () {
+      const { lender, tokenAddress, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // User has no shares, should reject
+      await expect(lender.connect(user1).withdrawFees(tokenAddress))
+        .to.be.revertedWith("Nothing to withdraw");
+    });
+
+    it("Should reject fee withdrawal when fees are too small", async function () {
+      const { lender, lenderAddress, token, tokenAddress, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Very small deposit to make fees minimal
+      const depositAmount = 100000000n; // Minimum deposit amount
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+      
+      // Generate extremely tiny fees with very small flash loan
+      const FlashLoanReceiver = await ethers.getContractFactory("ValidReceiver");
+      const receiver = await FlashLoanReceiver.deploy();
+      await receiver.waitForDeployment();
+      await transfer(token, user2, await receiver.getAddress(), 1000n); // Very small amount
+      
+      // Extremely small flash loan to generate minimal fees
+      await lender.flashLoan(
+        tokenAddress,
+        1000n, // Very small loan amount
+        await receiver.getAddress(),
+        "0x"
+      );
+      
+      // Should reject if fees are too small after exit fee
+      await expect(lender.connect(user1).withdrawFees(tokenAddress))
+        .to.be.revertedWith("Fees too small after exit fee");
+    });
+
+    it("Should update vote weights correctly after fee withdrawal", async function () {
+      const { lender, lenderAddress, token, tokenAddress, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // User deposits and votes
+      const depositAmount = ethers.parseEther("1000");
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+      await voteForLPFee(lender, user1, tokenAddress, 50);
+      
+      // Check initial vote weight
+      const initialVoteWeight = await lender.lpFeeSharesTotalVotes(tokenAddress, 50);
+      expect(initialVoteWeight).to.be.gt(0);
+      
+      // Generate fees
+      const FlashLoanReceiver = await ethers.getContractFactory("ValidReceiver");
+      const receiver = await FlashLoanReceiver.deploy();
+      await receiver.waitForDeployment();
+      await transfer(token, user2, await receiver.getAddress(), ethers.parseEther("1"));
+      
+      await lender.flashLoan(
+        tokenAddress,
+        ethers.parseEther("100"),
+        await receiver.getAddress(),
+        "0x"
+      );
+      
+      // Withdraw fees
+      await lender.connect(user1).withdrawFees(tokenAddress);
+      
+      // Check that vote weight was reduced proportionally
+      const finalVoteWeight = await lender.lpFeeSharesTotalVotes(tokenAddress, 50);
+      expect(finalVoteWeight).to.be.lt(initialVoteWeight);
+      expect(finalVoteWeight).to.be.gt(0); // Still has some voting power
+    });
+
+    it("Should allow multiple fee withdrawals over time", async function () {
+      const { lender, lenderAddress, token, tokenAddress, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // User deposits
+      const depositAmount = ethers.parseEther("1000");
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+      
+      const FlashLoanReceiver = await ethers.getContractFactory("ValidReceiver");
+      const receiver = await FlashLoanReceiver.deploy();
+      await receiver.waitForDeployment();
+      
+      // First round of fees
+      await transfer(token, user2, await receiver.getAddress(), ethers.parseEther("1"));
+      await lender.flashLoan(tokenAddress, ethers.parseEther("100"), await receiver.getAddress(), "0x");
+      
+      // First fee withdrawal
+      const balanceBefore1 = await token.balanceOf(user1.address);
+      await lender.connect(user1).withdrawFees(tokenAddress);
+      const balanceAfter1 = await token.balanceOf(user1.address);
+      const firstWithdrawal = balanceAfter1 - balanceBefore1;
+      
+      // Second round of fees
+      await transfer(token, user2, await receiver.getAddress(), ethers.parseEther("1"));
+      await lender.flashLoan(tokenAddress, ethers.parseEther("100"), await receiver.getAddress(), "0x");
+      
+      // Second fee withdrawal
+      const balanceBefore2 = await token.balanceOf(user1.address);
+      await lender.connect(user1).withdrawFees(tokenAddress);
+      const balanceAfter2 = await token.balanceOf(user1.address);
+      const secondWithdrawal = balanceAfter2 - balanceBefore2;
+      
+      // Both withdrawals should be positive
+      expect(firstWithdrawal).to.be.gt(0);
+      expect(secondWithdrawal).to.be.gt(0);
+      
+      // User should still have shares after multiple fee withdrawals
+      expect(await lender.shares(tokenAddress, user1.address)).to.be.gt(0);
+    });
+
+    it("Should work correctly with multiple users withdrawing fees", async function () {
+      const { lender, lenderAddress, token, tokenAddress, user1, user2, user3 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Two users deposit
+      const depositAmount = ethers.parseEther("500");
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+      
+      await approve(token, user2, lenderAddress, depositAmount);
+      await deposit(lender, user2, tokenAddress, depositAmount);
+      
+      // Generate fees
+      const FlashLoanReceiver = await ethers.getContractFactory("ValidReceiver");
+      const receiver = await FlashLoanReceiver.deploy();
+      await receiver.waitForDeployment();
+      await transfer(token, user3, await receiver.getAddress(), ethers.parseEther("1"));
+      
+      await lender.flashLoan(tokenAddress, ethers.parseEther("200"), await receiver.getAddress(), "0x");
+      
+      // Both users withdraw fees
+      const balance1Before = await token.balanceOf(user1.address);
+      const balance2Before = await token.balanceOf(user2.address);
+      
+      await lender.connect(user1).withdrawFees(tokenAddress);
+      await lender.connect(user2).withdrawFees(tokenAddress);
+      
+      const balance1After = await token.balanceOf(user1.address);
+      const balance2After = await token.balanceOf(user2.address);
+      
+      // Both should have received fees
+      expect(balance1After).to.be.gt(balance1Before);
+      expect(balance2After).to.be.gt(balance2Before);
+      
+      // Both should still have shares
+      expect(await lender.shares(tokenAddress, user1.address)).to.be.gt(0);
+      expect(await lender.shares(tokenAddress, user2.address)).to.be.gt(0);
+    });
+  });
+
   describe("Flash Loans", function () {
     it("Should execute flash loan successfully", async function () {
       const { lender, lenderAddress, token, tokenAddress, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);

@@ -150,6 +150,9 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     /// @notice Emitted when a user withdraws their deposit plus accumulated fees
     event Withdraw(address indexed user, address indexed token, uint256 principal, uint256 fees);
     
+    /// @notice Emitted when a user withdraws only their accumulated fees
+    event FeesWithdrawn(address indexed user, address indexed token, uint256 fees);
+    
     /// @notice Emitted when a flash loan is executed
     event FlashLoan(address indexed borrower, address indexed token, uint256 amount, uint256 fee);
     
@@ -399,30 +402,16 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
      */
     function withdraw(address token) external nonReentrant {
         require(token != address(0), "Invalid token");
-        uint256 userShares = shares[token][msg.sender];
-        require(userShares > 0, "Nothing to withdraw");
-        require(totalShares[token] > 0, "Invalid shares state");
+        require(shares[token][msg.sender] > 0, "Nothing to withdraw");
         
-        // Calculate total amount including accumulated fees (without rounding up)
-        // Formula: user_payout = (user_shares / total_shares) * total_pool_value
-        uint256 numerator = userShares * totalLiquidity[token];
-        uint256 grossAmount = numerator / totalShares[token];
-        // No rounding up - use exact division to prevent favorable rounding exploitation
-        
-        // Apply exit fee to cover dust attacks (fixed amount)
-        uint256 netAmount = grossAmount - ENTRY_EXIT_FEE;
+        // Use existing getWithdrawableAmount function to get all withdrawal details
+        (uint256 netAmount, uint256 grossAmount, uint256 principal, uint256 fees, uint256 exitFee) = 
+            this.getWithdrawableAmount(token, msg.sender);
         
         // Ensure minimum withdrawal amount after fees
         require(netAmount >= MINIMUM_DEPOSIT, "Withdrawal too small after ENTRY_EXIT_FEE fee");
-
-        // Cap withdrawal at available liquidity to prevent pool drain
-        if (grossAmount > totalLiquidity[token]) {
-            grossAmount = totalLiquidity[token];
-            netAmount = grossAmount - ENTRY_EXIT_FEE;
-        }
         
-        uint256 principal = deposits[token][msg.sender];
-        uint256 fees = grossAmount > principal ? grossAmount - principal : 0;
+        uint256 userShares = shares[token][msg.sender];
         
         // Update state before external interactions
         deposits[token][msg.sender] = 0;
@@ -438,6 +427,50 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         
         // Transfer net amount to user (gross amount minus exit fee)
         IERC20(token).safeTransfer(msg.sender, netAmount);
+    }
+
+    /**
+     * @notice Withdraw only accumulated fees while keeping principal deposited
+     * @param token Address of the ERC20 token to withdraw fees for
+     * @dev Allows LPs to harvest fees without unstaking their principal deposit.
+     *      Uses getWithdrawableAmount to calculate fees, then updates shares proportionally.
+     */
+    function withdrawFees(address token) external nonReentrant {
+        require(token != address(0), "Invalid token");
+        require(shares[token][msg.sender] > 0, "Nothing to withdraw");
+        
+        // Use existing getWithdrawableAmount function to get all withdrawal details
+        (uint256 netAmount, uint256 grossAmount, uint256 principal, uint256 fees, uint256 exitFee) = 
+            this.getWithdrawableAmount(token, msg.sender);
+        
+        // Must have fees to withdraw
+        require(fees > 0, "No fees to withdraw");
+        require(fees > exitFee, "Fees too small after exit fee");
+        
+        uint256 netFeeWithdrawal = fees - exitFee;
+        require(netFeeWithdrawal >= MINIMUM_DEPOSIT / 100, "Fee withdrawal too small");
+        
+        // Calculate how many shares to remove proportional to the fee withdrawal
+        // Ratio = netFeeWithdrawal / grossAmount
+        uint256 userShares = shares[token][msg.sender];
+        uint256 withdrawalRatio = (netFeeWithdrawal * 1e18) / grossAmount; // Use 1e18 for precision
+        uint256 sharesToRemove = (userShares * withdrawalRatio) / 1e18;
+        
+        // Update state before external interactions
+        shares[token][msg.sender] -= sharesToRemove;
+        totalShares[token] -= sharesToRemove;
+        totalLiquidity[token] -= netFeeWithdrawal; // Exit fee stays in pool as dust
+        
+        // deposits[token][msg.sender] remains unchanged - same principal
+        
+        // Update governance vote weight for the removed shares
+        _updateVoteWeight(token, msg.sender, sharesToRemove, false);
+        
+        // Emit event before external interaction
+        emit FeesWithdrawn(msg.sender, token, netFeeWithdrawal);
+        
+        // Transfer net fee amount to user
+        IERC20(token).safeTransfer(msg.sender, netFeeWithdrawal);
     }
 
     /**
