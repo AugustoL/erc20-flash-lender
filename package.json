@@ -2,7 +2,14 @@
   "name": "erc20-flash-lender",
   "version": "0.0.1",
   "description": "Personal flash loan protocol for ERC20 tokens. Educational/development use only - requires professional audit before mainnet deployment",
-  "keywords": ["flash-loan", "defi", "erc20", "mev", "arbitrage", "liquidation"],
+  "keywords": [
+    "flash-loan",
+    "defi",
+    "erc20",
+    "mev",
+    "arbitrage",
+    "liquidation"
+  ],
   "license": "GPL-3.0-or-later",
   "author": "AugustoL",
   "repository": {
@@ -30,12 +37,19 @@
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.1.0",
+    "@nomicfoundation/hardhat-ethers": "^3.1.0",
+    "@nomicfoundation/hardhat-ignition": "^0.15.13",
+    "@nomicfoundation/hardhat-ignition-ethers": "^0.15.14",
     "@nomicfoundation/hardhat-network-helpers": "^1.1.0",
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
     "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "@nomicfoundation/ignition-core": "^0.15.13",
+    "@typechain/ethers-v6": "^0.5.1",
     "@typechain/hardhat": "^9.1.0",
+    "@types/mocha": "^10.0.10",
     "chai": "^4.3.7",
     "dotenv": "^16.3.1",
+    "ethers": "^6.15.0",
     "hardhat": "^2.26.2",
     "hardhat-contract-sizer": "^2.10.0",
     "hardhat-gas-reporter": "^1.0.9",
@@ -43,12 +57,15 @@
     "prettier-plugin-solidity": "^1.1.3",
     "solhint": "^4.0.0",
     "solidity-coverage": "^0.8.5",
+    "ts-node": "^10.9.2",
     "typechain": "^8.3.2",
     "typescript": "^5.2.2"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
-    "@openzeppelin/contracts-upgradeable": "^5.4.0"
+    "@openzeppelin/contracts-upgradeable": "^5.4.0",
+    "@uniswap/v2-core": "^1.0.1",
+    "@uniswap/v2-periphery": "^1.1.0-beta.0"
   },
   "engines": {
     "node": ">=16.0.0",
