@@ -621,9 +621,12 @@ npm run test:gas       # Gas usage report
 npm run lint           # Lint Solidity code
 npm run format         # Format all code
 
-# Deployment
-npm run node           # Start local node
-npm run deploy:localhost  # Deploy locally
+# Local Development Environment
+npm run node           # Start local Hardhat node
+npm run deploy:dev     # Deploy with test tokens & setup (localhost)
+
+# Production Deployment
+npm run deploy:localhost  # Deploy to localhost
 npm run deploy:sepolia    # Deploy to Sepolia
 npm run deploy:mainnet    # Deploy to Mainnet
 
@@ -631,6 +634,39 @@ npm run deploy:mainnet    # Deploy to Mainnet
 npm run verify:sepolia    # Verify on Sepolia
 npm run verify:mainnet    # Verify on Mainnet
 ```
+
+### Development Environment Setup
+
+For local development and testing, use the development deployment script:
+
+```bash
+# Terminal 1: Start Hardhat node
+npm run node
+
+# Terminal 2: Deploy development environment
+npm run deploy:dev
+```
+
+The development deployment script (`deploy-dev.ts`) will:
+
+- 🏦 Deploy the ERC20FlashLender contract
+- 🪙 Deploy 4 test tokens (TUSDC, TDAI, TWETH, TWBTC) with different decimals
+- 👥 Set up 4 test accounts with token balances
+- 💰 Make initial deposits to get the pools started
+- 📄 Save deployment info to `deployment-dev.json`
+- 🔧 Provide ready-to-use contract interaction snippets
+
+**Test Tokens Deployed:**
+- TUSDC (6 decimals): Test USDC - 1B supply
+- TDAI (18 decimals): Test DAI - 1B supply  
+- TWETH (18 decimals): Test WETH - 100K supply
+- TWBTC (8 decimals): Test WBTC - 21K supply
+
+**Test Accounts Setup:**
+- Deployer: Contract owner with all permissions
+- User1, User2, User3: Each gets 10K of every test token
+
+This setup provides a complete local testing environment with realistic token scenarios and pre-funded accounts for immediate testing of flash loans, deposits, withdrawals, and governance features.
 
 ## Architecture
 
