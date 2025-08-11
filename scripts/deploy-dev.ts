@@ -64,7 +64,7 @@ async function main() {
     for (const tokenConfig of testTokens) {
         const TestToken = await hre.ethers.getContractFactory("MockERC20");
         const token = await TestToken.deploy(
-            hre.ethers.parseUnits(tokenConfig.supply, tokenConfig.decimals)
+            hre.ethers.parseUnits(tokenConfig.supply, tokenConfig.decimals), tokenConfig.name, tokenConfig.symbol
         ) as MockERC20;
         await token.waitForDeployment();
         

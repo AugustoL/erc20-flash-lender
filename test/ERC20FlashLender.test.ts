@@ -29,9 +29,9 @@ describe("ERC20FlashLender", function () {
     const [owner, user1, user2, user3] = await ethers.getSigners();
 
     // Deploy mock ERC20 token from ERC20FlashLenderTests.sol
-    const MockERC20 = await ethers.getContractFactory("MockERC20");
+    const MockERC20 = await ethers.getContractFactory("MockERC20",);
     const initialSupply = ethers.parseEther("1000000"); // 1 million tokens
-    const token = await MockERC20.deploy(initialSupply);
+    const token = await MockERC20.deploy(initialSupply, "TestToken", "TTK");
     await token.waitForDeployment();
 
     // Deploy ERC20FlashLender
@@ -614,7 +614,7 @@ describe("ERC20FlashLender", function () {
       
       // Deploy second token
       const MockERC20 = await ethers.getContractFactory("MockERC20");
-      const token2 = await MockERC20.deploy(ethers.parseEther("1000000"));
+      const token2 = await MockERC20.deploy(ethers.parseEther("1000000"), "TestToken2", "TTK2");
       await token2.waitForDeployment();
       
       // Setup balances for second token
@@ -990,7 +990,7 @@ describe("ERC20FlashLender", function () {
       
       // Deploy a second token
       const MockERC20 = await ethers.getContractFactory("MockERC20");
-      const token2 = await MockERC20.deploy(ethers.parseEther("1000000"));
+      const token2 = await MockERC20.deploy(ethers.parseEther("1000000"), "TestToken2", "TTK2");
       await token2.waitForDeployment();
       const token2Address = await token2.getAddress();
       
@@ -1090,7 +1090,7 @@ describe("ERC20FlashLender", function () {
       
       // Deploy a second token
       const MockERC20 = await ethers.getContractFactory("MockERC20");
-      const token2 = await MockERC20.deploy(ethers.parseEther("1000000"));
+      const token2 = await MockERC20.deploy(ethers.parseEther("1000000"), "TestToken2", "TTK2");
       await token2.waitForDeployment();
       const token2Address = await token2.getAddress();
       

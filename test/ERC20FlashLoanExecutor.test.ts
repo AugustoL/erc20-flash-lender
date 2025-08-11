@@ -22,7 +22,7 @@ describe("ERC20FlashLoanExecutor", function () {
     // Deploy mock ERC20 token
     const MockERC20 = await ethers.getContractFactory("MockERC20");
     const initialSupply = ethers.parseEther("1000000");
-    const token = await MockERC20.deploy(initialSupply);
+    const token = await MockERC20.deploy(initialSupply, "TestToken", "TTK");
     await token.waitForDeployment();
 
     // Deploy ERC20FlashLender
@@ -641,7 +641,7 @@ describe("ERC20FlashLoanExecutor", function () {
       
       // Deploy a second token for multi-token testing
       const MockERC20 = await ethers.getContractFactory("MockERC20");
-      const token2 = await MockERC20.deploy(ethers.parseEther("1000000"));
+      const token2 = await MockERC20.deploy(ethers.parseEther("1000000"), "TestToken2", "TTK2");
       await token2.waitForDeployment();
       
       // Setup second token balances and liquidity
