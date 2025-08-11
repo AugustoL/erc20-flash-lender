@@ -974,6 +974,171 @@ describe("ERC20FlashLender", function () {
       // Should return custom fee
       expect(await lender.getEffectiveLPFee(tokenAddress)).to.equal(50);
     });
+
+    it("Should return empty arrays when no tokens deposited", async function () {
+      const { lender, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Should return empty array when no tokens have been deposited
+      expect(await lender.getDepositedTokens()).to.deep.equal([]);
+      
+      // Should return empty array for user with no deposits
+      expect(await lender.getUserDepositedTokens(user1.address)).to.deep.equal([]);
+    });
+
+    it("Should track deposited tokens correctly", async function () {
+      const { lender, lenderAddress, token, tokenAddress, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Deploy a second token
+      const MockERC20 = await ethers.getContractFactory("MockERC20");
+      const token2 = await MockERC20.deploy(ethers.parseEther("1000000"));
+      await token2.waitForDeployment();
+      const token2Address = await token2.getAddress();
+      
+      // Give both users some token2
+      await token2.transfer(user1.address, ethers.parseEther("10000"));
+      await token2.transfer(user2.address, ethers.parseEther("10000"));
+      
+      const depositAmount = ethers.parseEther("100");
+      
+      // User1 deposits token1
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+      
+      // Check global deposited tokens
+      let depositedTokens = await lender.getDepositedTokens();
+      expect(depositedTokens).to.deep.equal([tokenAddress]);
+      
+      // Check user1's deposited tokens
+      let user1Tokens = await lender.getUserDepositedTokens(user1.address);
+      expect(user1Tokens).to.deep.equal([tokenAddress]);
+      
+      // Check user2's deposited tokens (should be empty)
+      let user2Tokens = await lender.getUserDepositedTokens(user2.address);
+      expect(user2Tokens).to.deep.equal([]);
+      
+      // User2 deposits token2
+      await approve(token2, user2, lenderAddress, depositAmount);
+      await deposit(lender, user2, token2Address, depositAmount);
+      
+      // Check global deposited tokens (should have both)
+      depositedTokens = await lender.getDepositedTokens();
+      expect(depositedTokens).to.have.length(2);
+      expect(depositedTokens).to.include(tokenAddress);
+      expect(depositedTokens).to.include(token2Address);
+      
+      // Check user1's deposited tokens (still just token1)
+      user1Tokens = await lender.getUserDepositedTokens(user1.address);
+      expect(user1Tokens).to.deep.equal([tokenAddress]);
+      
+      // Check user2's deposited tokens (should have token2)
+      user2Tokens = await lender.getUserDepositedTokens(user2.address);
+      expect(user2Tokens).to.deep.equal([token2Address]);
+      
+      // User1 also deposits token2
+      await approve(token2, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, token2Address, depositAmount);
+      
+      // Check user1's deposited tokens (should have both)
+      user1Tokens = await lender.getUserDepositedTokens(user1.address);
+      expect(user1Tokens).to.have.length(2);
+      expect(user1Tokens).to.include(tokenAddress);
+      expect(user1Tokens).to.include(token2Address);
+    });
+
+    it("Should remove users from their deposited tokens list when they withdraw", async function () {
+      const { lender, lenderAddress, token, tokenAddress, user1, user2 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      const depositAmount = ethers.parseEther("100");
+      
+      // Both users deposit the same token
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+      
+      await approve(token, user2, lenderAddress, depositAmount);
+      await deposit(lender, user2, tokenAddress, depositAmount);
+      
+      // Verify token is tracked globally and for both users
+      expect(await lender.getDepositedTokens()).to.deep.equal([tokenAddress]);
+      expect(await lender.getUserDepositedTokens(user1.address)).to.deep.equal([tokenAddress]);
+      expect(await lender.getUserDepositedTokens(user2.address)).to.deep.equal([tokenAddress]);
+      
+      // User1 withdraws completely
+      await withdraw(lender, user1, tokenAddress);
+      
+      // Token should still be in global list (user2 still has deposits, plus virtual shares remain)
+      expect(await lender.getDepositedTokens()).to.deep.equal([tokenAddress]);
+      
+      // User1 should have no deposited tokens
+      expect(await lender.getUserDepositedTokens(user1.address)).to.deep.equal([]);
+      
+      // User2 should still have the token
+      expect(await lender.getUserDepositedTokens(user2.address)).to.deep.equal([tokenAddress]);
+      
+      // User2 withdraws completely
+      await withdraw(lender, user2, tokenAddress);
+      
+      // Token should be removed from global list (no users left with deposits)
+      expect(await lender.getDepositedTokens()).to.deep.equal([]);
+      
+      // Both users should have no deposited tokens
+      expect(await lender.getUserDepositedTokens(user1.address)).to.deep.equal([]);
+      expect(await lender.getUserDepositedTokens(user2.address)).to.deep.equal([]);
+    });
+
+    it("Should handle multiple tokens and partial withdrawals correctly", async function () {
+      const { lender, lenderAddress, token, tokenAddress, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+      
+      // Deploy a second token
+      const MockERC20 = await ethers.getContractFactory("MockERC20");
+      const token2 = await MockERC20.deploy(ethers.parseEther("1000000"));
+      await token2.waitForDeployment();
+      const token2Address = await token2.getAddress();
+      
+      // Give user1 some token2
+      await token2.transfer(user1.address, ethers.parseEther("10000"));
+      
+      const depositAmount = ethers.parseEther("100");
+      
+      // User1 deposits both tokens
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+      
+      await approve(token2, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, token2Address, depositAmount);
+      
+      // Check both tokens are tracked
+      let depositedTokens = await lender.getDepositedTokens();
+      expect(depositedTokens).to.have.length(2);
+      expect(depositedTokens).to.include(tokenAddress);
+      expect(depositedTokens).to.include(token2Address);
+      
+      let userTokens = await lender.getUserDepositedTokens(user1.address);
+      expect(userTokens).to.have.length(2);
+      expect(userTokens).to.include(tokenAddress);
+      expect(userTokens).to.include(token2Address);
+      
+      // User1 withdraws only token1
+      await withdraw(lender, user1, tokenAddress);
+      
+      // Global list should have only token2 now (token1 withdrawn)
+      depositedTokens = await lender.getDepositedTokens();
+      expect(depositedTokens).to.have.length(1);
+      expect(depositedTokens).to.include(token2Address);
+      
+      // User should only have token2
+      userTokens = await lender.getUserDepositedTokens(user1.address);
+      expect(userTokens).to.deep.equal([token2Address]);
+      
+      // Withdraw the remaining token
+      await withdraw(lender, user1, token2Address);
+      
+      // Global list  should be empty now
+      depositedTokens = await lender.getDepositedTokens();
+      expect(depositedTokens).to.have.length(0);
+      
+      // User should have no deposited tokens
+      expect(await lender.getUserDepositedTokens(user1.address)).to.deep.equal([]);
+    });
   });
 
   describe("Edge Cases", function () {

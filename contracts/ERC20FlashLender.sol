@@ -107,6 +107,16 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     /// @notice Accumulated management fees for each token, withdrawable by owner
     mapping(address => uint256) public collectedManagementFees;
 
+    /// @notice List of all tokens that have been deposited into the contract with a mapping index
+    /// @dev The index starts the count as 1, so if the index is 0, it means the token is not in the list
+    address[] public tokensDeposited;
+    mapping(address => uint256) public tokensDepositedIndex;
+
+    /// @notice Mapping of tokens deposited by each user with a mapping index
+    /// @dev The index starts the count as 1, so if the index is 0, it means the token is not in the list
+    mapping(address => address[]) public depositedTokensByUser;
+    mapping(address => mapping(address => uint256)) public userDepositedTokensIndex;
+
     // ===================== STORAGE GAP =====================
     
     /// @notice Storage gap for future upgrades
@@ -382,7 +392,19 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         shares[token][msg.sender] += newShares;
         totalShares[token] += newShares;
         totalLiquidity[token] += amount; // Add full amount to liquidity (entry fee stays in pool)
-        
+
+        // Add the token to the tokensDeposited list if it's a new token
+        if (tokensDepositedIndex[token] == 0) {
+            tokensDeposited.push(token);
+            tokensDepositedIndex[token] = tokensDeposited.length;
+        }
+
+        // Add the token to the user's deposited tokens if it's a new deposit
+        if (userDepositedTokensIndex[msg.sender][token] == 0) {
+            depositedTokensByUser[msg.sender].push(token);
+            userDepositedTokensIndex[msg.sender][token] = depositedTokensByUser[msg.sender].length;
+        }
+
         // Update governance vote weight if user has voted
         _updateVoteWeight(token, msg.sender, newShares, true);
         
@@ -418,6 +440,36 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         shares[token][msg.sender] = 0;
         totalShares[token] -= userShares;
         totalLiquidity[token] -= netAmount; // Remove only net amount (exit fee stays in pool as dust)
+
+        // Remove the token from the user's deposited tokens
+        uint256 userTokenIndex = userDepositedTokensIndex[msg.sender][token];
+        if (userTokenIndex > 0) {
+            // Remove from user's deposited tokens array
+            uint256 lastIndex = depositedTokensByUser[msg.sender].length - 1;
+            if (userTokenIndex <= lastIndex) {
+                address lastToken = depositedTokensByUser[msg.sender][lastIndex];
+                depositedTokensByUser[msg.sender][userTokenIndex - 1] = lastToken; // Move last to removed index
+                userDepositedTokensIndex[msg.sender][lastToken] = userTokenIndex; // Update moved token index
+            }
+            depositedTokensByUser[msg.sender].pop(); // Remove last element
+            userDepositedTokensIndex[msg.sender][token] = 0; // Reset index for this token
+        }
+
+        // Remove the token from the tokensDeposited list if no users left
+        uint256 tokenIndex = tokensDepositedIndex[token];
+        if (tokenIndex > 0) {
+            // Check if this was the last user for this token
+            if (totalShares[token] <= VIRTUAL_SHARES) {
+                uint256 lastTokenIndex = tokensDeposited.length - 1;
+                if (tokenIndex <= lastTokenIndex) {
+                    address lastToken = tokensDeposited[lastTokenIndex];
+                    tokensDeposited[tokenIndex - 1] = lastToken; // Move last to removed index
+                    tokensDepositedIndex[lastToken] = tokenIndex; // Update moved token index
+                }
+                tokensDeposited.pop(); // Remove last element
+                tokensDepositedIndex[token] = 0; // Reset index for this token
+            }
+        }
         
         // Update governance vote weight after resetting shares (user now has 0 shares)
         _updateVoteWeight(token, msg.sender, userShares, false);
@@ -725,6 +777,20 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         
         principal = deposits[token][user];
         fees = grossAmount > principal ? grossAmount - principal : 0;
+    }
+
+    /// @notice Get the list of all tokens deposited in the liquidity pool
+    /// @return address[] Array of token addresses that have been deposited
+    /// @dev Returns the list of all unique tokens that have been deposited by any user
+    function getDepositedTokens() external view returns (address[] memory) {
+        return tokensDeposited;
+    }
+
+    /// @notice Get the tokens deposited by a specific user
+    /// @param user Address of the user to check
+    /// @return address[] Array of token addresses that the user has deposited
+    function getUserDepositedTokens(address user) external view returns (address[] memory) {
+        return depositedTokensByUser[user];
     }
     
     /**
