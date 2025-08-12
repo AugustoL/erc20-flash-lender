@@ -140,9 +140,12 @@ export interface TokenPoolRow {
   volume: string; // placeholder
   lpFeeBps: string;
   decimals: number;
-  totalShares: string;
   apy?: number;
   hasUserDeposits?: boolean;
+  // Status information
+  walletBalance?: string;
+  approvedAmount?: string;
+  depositedAmount?: string;
 }
 
 /**
@@ -237,7 +240,7 @@ export interface FeeExecutionAction extends UserAction {
 /**
  * Action types for modals and UI interactions
  */
-export type ActionType = 'deposit' | 'withdraw' | 'vote' | 'approve';
+export type ActionType = 'deposit' | 'withdraw' | 'vote' | 'approve' | 'add-token';
 
 /**
  * Withdraw types

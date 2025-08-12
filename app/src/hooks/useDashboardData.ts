@@ -21,6 +21,15 @@ export const useDashboardRows = (pools: PoolData[] = [], userPositions: UserPosi
       const hasWithdrawableAmount = userPosition?.withdrawable?.netAmount && 
         BigInt(userPosition.withdrawable.netAmount) > BigInt(0);
       
+      // Format status amounts
+      const decimals = pool.decimals || 18;
+      const walletBalance = pool.userBalance ? 
+        ethers.formatUnits(pool.userBalance, decimals) : '0';
+      const approvedAmount = pool.userAllowance ? 
+        ethers.formatUnits(pool.userAllowance, decimals) : '0';
+      const depositedAmount = userPosition?.withdrawable?.principal ? 
+        ethers.formatUnits(userPosition.withdrawable.principal, decimals) : '0';
+      
       return {
         address: pool.address,
         symbol: pool.symbol || 'Unknown',
@@ -30,9 +39,11 @@ export const useDashboardRows = (pools: PoolData[] = [], userPositions: UserPosi
         volume: '0', 
         lpFeeBps: ((pool.lpFee || 0) / 100).toFixed(2),
         decimals: pool.decimals || 18,
-        totalShares: pool.totalShares || '0',
         apy: pool.apy,
-        hasUserDeposits: !!hasWithdrawableAmount
+        hasUserDeposits: !!hasWithdrawableAmount,
+        walletBalance,
+        approvedAmount,
+        depositedAmount
       };
     });
   }, [pools, userPositions]);

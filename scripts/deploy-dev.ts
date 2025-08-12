@@ -56,10 +56,11 @@ async function main() {
     
     // Deploy multiple test tokens with different decimals and supplies
     const testTokens = [
-        { name: "Test Token 1", symbol: "TEST1", decimals: 18, supply: "1000000" }, // 1M TEST1
-        { name: "Test Token 2", symbol: "TEST2", decimals: 18, supply: "1000000" }, // 1M TEST2
-        { name: "Test USDC", symbol: "TUSDC", decimals: 6, supply: "1000000000" }, // 1B TUSDC
-        { name: "Test DAI", symbol: "TDAI", decimals: 18, supply: "1000000000" }, // 1B TDAI
+        { name: "Test Token 1", symbol: "TEST1", decimals: 18, supply: "1000000", distribute: true, deposit: true }, // 1M TEST1
+        { name: "Test Token 2", symbol: "TEST2", decimals: 18, supply: "1000000", distribute: true, deposit: true }, // 1M TEST2
+        { name: "Test USDC", symbol: "TUSDC", decimals: 6, supply: "1000000000", distribute: true, deposit: true }, // 1B TUSDC
+        { name: "Test DAI", symbol: "TDAI", decimals: 18, supply: "1000000000", distribute: true, deposit: true }, // 1B TDAI
+        { name: "Test Token 3", symbol: "TEST3", decimals: 18, supply: "1000000", distribute: true, deposit: false }, // 1M TEST3
     ];
 
     const deployedTokens: Array<{
@@ -68,6 +69,7 @@ async function main() {
         address: string;
         decimals: number;
         contract: MockERC20;
+        deposit: boolean;
     }> = [];
     
     for (const tokenConfig of testTokens) {
@@ -86,25 +88,28 @@ async function main() {
             symbol: tokenConfig.symbol,
             address: tokenAddress,
             decimals: tokenConfig.decimals,
-            contract: token
+            contract: token,
+            deposit: tokenConfig.deposit,
         });
         
         console.log(`  ✅ ${tokenConfig.symbol} deployed to: ${tokenAddress}`);
         
-        // Distribute tokens to test accounts with randomness
-        console.log(`  📤 Distributing ${tokenConfig.symbol} to test accounts...`);
-        const baseAmount = Number(tokenConfig.supply) / 20; // Base amount for distribution
-        
-        for (let i = 0; i < users.length; i++) {
-            // Add randomness: +/- 0-100 of base amount
-            const randomVariation = (Math.random() * 200 - 100); // -100 to +100
-            const finalAmount = Math.max(baseAmount + randomVariation, baseAmount * 0.1); // Minimum 10% of base
-            const tokenAmount = hre.ethers.parseUnits(finalAmount.toFixed(tokenConfig.decimals), tokenConfig.decimals);
+        if (tokenConfig.distribute) {
+            // Distribute tokens to test accounts with randomness
+            console.log(`  📤 Distributing ${tokenConfig.symbol} to test accounts...`);
+            const baseAmount = Number(tokenConfig.supply) / 20; // Base amount for distribution
             
-            await token.transfer(users[i].address, tokenAmount);
-            
-            const formattedAmount = hre.ethers.formatUnits(tokenAmount, tokenConfig.decimals);
-            console.log(`    User${i + 1}: ${formattedAmount} ${tokenConfig.symbol}`);
+            for (let i = 0; i < users.length; i++) {
+                // Add randomness: +/- 0-100 of base amount
+                const randomVariation = (Math.random() * 200 - 100); // -100 to +100
+                const finalAmount = Math.max(baseAmount + randomVariation, baseAmount * 0.1); // Minimum 10% of base
+                const tokenAmount = hre.ethers.parseUnits(finalAmount.toFixed(tokenConfig.decimals), tokenConfig.decimals);
+                
+                await token.transfer(users[i].address, tokenAmount);
+                
+                const formattedAmount = hre.ethers.formatUnits(tokenAmount, tokenConfig.decimals);
+                console.log(`    User${i + 1}: ${formattedAmount} ${tokenConfig.symbol}`);
+            }
         }
     }
 
@@ -134,6 +139,10 @@ async function main() {
     
     // Have multiple users make deposits with varying amounts
     for (const token of deployedTokens) {
+        if (!token.deposit) {
+            console.log(`  ❌ Skipping ${token.symbol} - not set for distribution`);
+            continue;
+        }
         try {
             console.log(`\n  📋 ${token.symbol} deposits:`);
             
@@ -180,6 +189,10 @@ async function main() {
     const feeNames = ["0.01%", "0.25%", "0.5%", "1%"];
     
     for (const token of deployedTokens) {
+        if (!token.deposit) {
+            console.log(`  ❌ Skipping ${token.symbol} - not set for governance voting`);
+            continue;
+        }
         try {
             console.log(`\n  📋 ${token.symbol} fee voting:`);
             

@@ -6,6 +6,7 @@ import { ERC20FlashLenderAddress } from '../../utils/constants';
 import ERC20FlashLenderABI from '../../contracts/ERC20FlashLender.json';
 import ActionModal, { ActionType } from '../common/ActionModal';
 import DashboardTableRow from '../common/DashboardTableRow';
+import NewTokenDepositModal from '../common/NewTokenDepositModal';
 import { useNotifications } from '../../context/NotificationContext';
 import { useDashboardRows, useAvailableBalance, useAvailableFees, useStableProvider } from '../../hooks/useDashboardData';
 
@@ -16,6 +17,7 @@ export default function Dashboard() {
   
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isNewTokenModalOpen, setIsNewTokenModalOpen] = useState(false);
   const [currentAction, setCurrentAction] = useState<ActionType>('deposit');
   const [selectedToken, setSelectedToken] = useState<string>('');
   const [isTransactionLoading, setIsTransactionLoading] = useState(false);
@@ -92,6 +94,15 @@ export default function Dashboard() {
     setIsTransactionLoading(false);
   }, []);
 
+  const openNewTokenModal = useCallback(() => {
+    setIsNewTokenModalOpen(true);
+  }, []);
+
+  const closeNewTokenModal = useCallback(() => {
+    setIsNewTokenModalOpen(false);
+    setIsTransactionLoading(false);
+  }, []);
+
   const handleModalConfirm = async (amount: string, _feePercentage?: number, withdrawType?: 'all' | 'fees') => {
     if (!isConnected || !address || !selectedToken) {
       addNotification('Please connect your wallet first.', 'warning');
@@ -140,6 +151,66 @@ export default function Dashboard() {
     }
   };
 
+  const handleNewTokenDeposit = async (
+    tokenAddress: string, 
+    amount: string, 
+    tokenInfo: { symbol: string; name: string; decimals: number }
+  ) => {
+    if (!isConnected || !address) {
+      addNotification('Please connect your wallet first.', 'warning');
+      return;
+    }
+
+    setIsTransactionLoading(true);
+    
+    try {
+      const signer = await getSigner();
+      
+      // Use the existing deposit function
+      await hookDeposit(tokenAddress, amount, signer);
+      addNotification(`Successfully deposited ${amount} ${tokenInfo.symbol}!`, 'success');
+      
+      closeNewTokenModal();
+      
+      // Clear cache and wait a moment for blockchain state to propagate
+      clearCache();
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+      
+      // Refresh data after successful transaction
+      await refresh();
+    } catch (error) {
+      console.error('New token deposit failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      addNotification(`Deposit failed: ${errorMessage}`, 'error');
+      setIsTransactionLoading(false);
+    }
+  };
+
+  const handleNewTokenApproval = async (tokenAddress: string, amount: string) => {
+    if (!isConnected || !address) {
+      addNotification('Please connect your wallet first.', 'warning');
+      return;
+    }
+
+    setIsTransactionLoading(true);
+    
+    try {
+      const signer = await getSigner();
+      
+      // Use the existing approve function
+      await hookApprove(tokenAddress, amount, signer);
+      addNotification(`Successfully approved token for spending!`, 'success');
+      
+      // Note: We don't close the modal here so user can proceed to deposit
+      setIsTransactionLoading(false);
+    } catch (error) {
+      console.error('Token approval failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      addNotification(`Approval failed: ${errorMessage}`, 'error');
+      setIsTransactionLoading(false);
+    }
+  };
+
   // Get available balance and fees using optimized hooks
   const availableBalance = useAvailableBalance(currentAction, selectedToken, pools, userPositions);
   const availableFees = useAvailableFees(selectedToken, pools, userPositions);
@@ -180,8 +251,16 @@ export default function Dashboard() {
   return (
     <div className="dash-container">
       <div className="card surface">
-        <div className="card-head">
+        <div className="card-head-with-button">
           <h3>Token Pools</h3>
+          <button 
+            className="btn-md primary" 
+            onClick={openNewTokenModal}
+            disabled={!isConnected}
+          >
+            <span>+</span>
+            Deposit Token
+          </button>
         </div>
         <div className="table-wrapper">
           <table className="dash-table">
@@ -190,15 +269,14 @@ export default function Dashboard() {
                 <th>Asset</th>
                 <th className="center">TVL</th>
                 <th className="center">APY</th>
-                <th className="center">Total Shares</th>
                 <th className="center">LP Fee</th>
-                <th className="center">Actions</th>
+                <th className="center">Status</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: '2rem' }}>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: '2rem' }}>
                     {!isConnected 
                       ? "Connect your wallet to view available pools"
                       : "No token pools found. The contract may not have any configured tokens yet."
@@ -212,10 +290,6 @@ export default function Dashboard() {
                     row={row}
                     isConnected={isConnected}
                     address={address}
-                    onOpenModal={openModal}
-                    shouldShowApproveButton={shouldShowApproveButton}
-                    shouldShowDepositButton={shouldShowDepositButton}
-                    getButtonState={getButtonState}
                   />
                 ))
               )}
@@ -236,6 +310,24 @@ export default function Dashboard() {
         currentVoteFee={0} // Not used for deposit/withdraw
         onConfirm={handleModalConfirm}
         isLoading={isTransactionLoading}
+      />
+
+      {/* New Token Deposit Modal */}
+      <NewTokenDepositModal
+        isOpen={isNewTokenModalOpen}
+        onClose={closeNewTokenModal}
+        onConfirm={handleNewTokenDeposit}
+        onApprove={handleNewTokenApproval}
+        isLoading={isTransactionLoading}
+        provider={provider}
+        userAddress={address}
+        lenderAddress={ERC20FlashLenderAddress}
+        existingTokens={pools.map(pool => ({
+          address: pool.address,
+          symbol: pool.symbol || 'Unknown',
+          name: pool.name || 'Unknown Token',
+          decimals: pool.decimals || 18
+        }))}
       />
     </div>
   );

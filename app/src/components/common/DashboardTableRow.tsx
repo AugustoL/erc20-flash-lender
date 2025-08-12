@@ -1,56 +1,57 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { ethers } from 'ethers';
-import { TokenPoolRow, ActionType } from '../../types';
+import { TokenPoolRow } from '../../types';
 
 interface DashboardTableRowProps {
   row: TokenPoolRow;
   isConnected: boolean;
   address?: string;
-  onOpenModal: (action: ActionType, tokenAddress: string) => void;
-  shouldShowApproveButton: (tokenAddress: string) => boolean;
-  shouldShowDepositButton: (tokenAddress: string) => boolean;
-  getButtonState: (tokenAddress: string) => 'approve' | 'deposit' | 'insufficient' | 'none';
 }
 
 const DashboardTableRow = React.memo<DashboardTableRowProps>(({
   row,
   isConnected,
-  address,
-  onOpenModal,
-  shouldShowApproveButton,
-  shouldShowDepositButton,
-  getButtonState
+  address
 }) => {
-  const buttonState = getButtonState(row.address);
-  const showApprove = shouldShowApproveButton(row.address);
-  const showDeposit = shouldShowDepositButton(row.address);
-
-  const handleApproveClick = React.useCallback(() => {
-    onOpenModal('approve', row.address);
-  }, [onOpenModal, row.address]);
-
-  const handleDepositClick = React.useCallback(() => {
-    onOpenModal('deposit', row.address);
-  }, [onOpenModal, row.address]);
-
-  const handleWithdrawClick = React.useCallback(() => {
-    onOpenModal('withdraw', row.address);
-  }, [onOpenModal, row.address]);
+  const navigate = useNavigate();
+  
+  const formatAmount = (amount: string | undefined, maxLength: number = 8): string => {
+    if (!amount || amount === '0') return '0';
+    
+    const num = parseFloat(amount);
+    if (num === 0) return '0';
+    
+    // For very small numbers, use scientific notation
+    if (num < 0.0001) {
+      return num.toExponential(2);
+    }
+    
+    // For large numbers, use K/M/B notation
+    if (num >= 1000000) {
+      return (num / 1000000).toFixed(1) + 'M';
+    }
+    if (num >= 1000) {
+      return (num / 1000).toFixed(1) + 'K';
+    }
+    
+    // For normal numbers, limit decimal places
+    const str = num.toFixed(4);
+    return str.length > maxLength ? num.toFixed(2) : str;
+  };
+  
+  const handleRowClick = () => {
+    navigate(`/pool/${row.address}`);
+  };
 
   return (
-    <tr>
+    <tr onClick={handleRowClick} style={{ cursor: 'pointer' }}>
       <td>
         <div className="asset-cell">
           <div className="avatar" />
-          <div>
+          <div style={{ flex: 1 }}>
             <div className="sym">
-              <Link 
-                to={`/pool/${row.address}`}
-                className="token-link"
-              >
-                {row.symbol}
-              </Link>
+              <span>{row.symbol}</span>
               {row.hasUserDeposits && (
                 <span style={{ 
                   marginLeft: '8px', 
@@ -70,63 +71,33 @@ const DashboardTableRow = React.memo<DashboardTableRowProps>(({
         </div>
       </td>
       <td className="center">{row.tvl}</td>
-      <td className="center">{row.apy !== undefined && row.apy !== null ? `${row.apy.toFixed(2)}%` : 'N/A'}</td>
-      <td className="center">
-        {row.totalShares && row.decimals 
-          ? Number(ethers.formatUnits(row.totalShares, row.decimals)).toLocaleString(undefined, { maximumFractionDigits: 2 })
-          : 'N/A'
-        }
-      </td>
+      <td className="center">{row.apy !== undefined && row.apy !== null ? `${row.apy.toFixed(2)}%` : '0%'}</td>
       <td className="center">{row.lpFeeBps}%</td>
       <td className="center">
-        <div className="row-actions center">
+        <div className="status-info">
           {isConnected && address ? (
-            <>
-              {buttonState === 'none' ? (
-                <button 
-                  className="btn-xs outline" 
-                  disabled
-                >
-                  No Balance Data
-                </button>
-              ) : (
-                <>
-                  {showApprove && (
-                    <button 
-                      className="btn-xs primary" 
-                      onClick={handleApproveClick}
-                      style={{ marginRight: showDeposit ? '4px' : '0' }}
-                    >
-                      Approve
-                    </button>
-                  )}
-                  {showDeposit && (
-                    <button 
-                      className="btn-xs success" 
-                      onClick={handleDepositClick}
-                    >
-                      Deposit
-                    </button>
-                  )}
-                </>
-              )}
-            </>
+            <div style={{ fontSize: '0.85em', lineHeight: '1.3' }}>
+              <div style={{ marginBottom: '2px' }}>
+                <span style={{ color: '#6b7280' }}>Wallet:</span>{' '}
+                <span style={{ fontWeight: '500' }}>{formatAmount(row.walletBalance)} {row.symbol}</span>
+              </div>
+              <div style={{ marginBottom: '2px' }}>
+                <span style={{ color: '#6b7280' }}>Approved:</span>{' '}
+                <span style={{ fontWeight: '500', color: row.approvedAmount && parseFloat(row.approvedAmount) > 0 ? '#10b981' : '#6b7280' }}>
+                  {formatAmount(row.approvedAmount)} {row.symbol}
+                </span>
+              </div>
+              <div>
+                <span style={{ color: '#6b7280' }}>Deposited:</span>{' '}
+                <span style={{ fontWeight: '500', color: row.depositedAmount && parseFloat(row.depositedAmount) > 0 ? '#3b82f6' : '#6b7280' }}>
+                  {formatAmount(row.depositedAmount)} {row.symbol}
+                </span>
+              </div>
+            </div>
           ) : (
-            <button 
-              className="btn-xs success" 
-              disabled
-            >
-              Connect Wallet
-            </button>
-          )}
-          {row.hasUserDeposits && (
-            <button 
-              className="btn-xs success" 
-              disabled={!address}
-              onClick={handleWithdrawClick}
-            >
-              Withdraw
-            </button>
+            <div style={{ color: '#9ca3af', fontSize: '0.875em' }}>
+              Connect wallet to view status
+            </div>
           )}
         </div>
       </td>
