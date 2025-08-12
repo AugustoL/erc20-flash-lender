@@ -2010,3 +2010,225 @@ body {
   content: "⚠️";
   flex-shrink: 0;
 }
+
+/* ==================== HELP PAGE STYLES ==================== */
+
+.help-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.help-hero {
+  margin-bottom: 3rem;
+}
+
+.help-hero-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, #10b981, #059669);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.help-hero-title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, var(--text-primary), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.help-hero-subtitle {
+  color: var(--text-sec);
+  font-size: 1.1rem;
+  line-height: 1.6;
+  max-width: 600px;
+  text-align: center;
+}
+
+.help-quick-start {
+  padding: 2rem;
+  margin-bottom: 2rem;
+  background: linear-gradient(135deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--accent);
+}
+
+.help-section-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.help-section-icon {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.help-section-title {
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.help-section-subtitle {
+  color: var(--text-sec);
+}
+
+.help-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.help-step {
+  text-align: center;
+  padding: 1rem;
+}
+
+.help-step-number {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  font-weight: bold;
+}
+
+.help-step-title {
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.help-step-description {
+  color: var(--text-sec);
+  font-size: 0.9rem;
+}
+
+.help-faq-section {
+  margin-bottom: 3rem;
+}
+
+.help-faq-title {
+  text-align: center;
+  margin-bottom: 2rem;
+  color: var(--text-primary);
+}
+
+.help-faq-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.help-faq-item {
+  padding: 1.5rem;
+  background: var(--surface-2);
+}
+
+.help-faq-question {
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.help-faq-answer {
+  color: var(--text-sec);
+  line-height: 1.6;
+}
+
+.help-troubleshooting {
+  padding: 2rem;
+  margin-bottom: 2rem;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.help-troubleshooting-header {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.help-troubleshooting-icon {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.help-troubleshooting-title {
+  text-align: center;
+  color: #f59e0b;
+  margin-bottom: 2rem;
+}
+
+.help-troubleshooting-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+.help-troubleshooting-item-title {
+  color: var(--text-primary);
+  margin: 0rem;
+}
+
+.help-troubleshooting-list {
+  color: var(--text-sec);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.help-support {
+  padding: 2rem;
+  background: linear-gradient(135deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--accent);
+  margin-bottom: 2rem;
+}
+
+.help-support-content {
+  text-align: center;
+}
+
+.help-support-icon {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.help-support-title {
+  margin-bottom: 2rem;
+  color: var(--text-primary);
+}
+
+.help-support-description {
+  color: var(--text-sec);
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+}
+
+.help-support-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.help-back-button {
+  padding: 12px 24px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.github-btn {
+  text-decoration: none !important;
+  color: white !important;
+  background-color: #24292f !important;
+  font-weight: 500;
+}
+
+.github-btn-outline {
+  text-decoration: none !important;
+}
+
+.margin-0 {
+  margin: 0 !important;
+}
