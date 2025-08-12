@@ -19,7 +19,7 @@ const Navbar = () => {
             {address ? (
               <Link to={`/activity/${address}`}>ACTIVITY</Link>
             ) : (
-              <span style={{ color: 'var(--text-sec)', cursor: 'not-allowed' }}>ACTIVITY</span>
+              <span className="navbar-activity-disabled">ACTIVITY</span>
             )}
           </li>
         </ul>

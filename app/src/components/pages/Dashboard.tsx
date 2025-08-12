@@ -221,7 +221,7 @@ export default function Dashboard() {
       <div className="dash-container">
         <div className="card surface">
           <div className="card-head"><h3>Token Pools</h3></div>
-          <div style={{ padding: '2rem', textAlign: 'center' }}>
+          <div className="dashboard-loading-container">
             <div>Loading protocol data...</div>
           </div>
         </div>
@@ -235,8 +235,8 @@ export default function Dashboard() {
       <div className="dash-container">
         <div className="card surface">
           <div className="card-head"><h3>Token Pools</h3></div>
-          <div style={{ padding: '2rem', textAlign: 'center' }}>
-            <div style={{ color: 'red', marginBottom: '1rem' }}>
+          <div className="dashboard-error-container">
+            <div className="dashboard-error-message">
               Error loading data: {error.message}
             </div>
             <button onClick={refresh} className="btn primary">
@@ -276,7 +276,7 @@ export default function Dashboard() {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '2rem' }}>
+                  <td colSpan={5} className="dashboard-empty-table-cell">
                     {!isConnected 
                       ? "Connect your wallet to view available pools"
                       : "No token pools found. The contract may not have any configured tokens yet."

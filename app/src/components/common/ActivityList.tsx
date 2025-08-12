@@ -21,11 +21,11 @@ const ActivityItem = React.memo<{
   return (
     <div 
       className="activity-item"
-      style={{ borderLeft: `4px solid ${getActionColor(action.type)}` }}
+      style={{'--action-color': getActionColor(action.type)} as React.CSSProperties}
     >
       <div className="activity-icon">{getActionIcon(action.type)}</div>
       <div className="activity-content">
-        <div className="activity-type" style={{ color: getActionColor(action.type) }}>
+        <div className="activity-type activity-type-colored">
           {action.type === 'flashloan' ? 'Flash Loan' : 
            action.type === 'fee_proposal' ? 'Fee Proposal' :
            action.type === 'fee_execution' ? 'Fee Execution' :

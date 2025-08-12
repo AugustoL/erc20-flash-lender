@@ -291,7 +291,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
         </div>
         
         <div className="modal-body">
-          <p className="form-help" style={{ marginBottom: '20px' }}>
+          <p className="form-help token-modal-help-text">
             {existingTokens.length > 0 
               ? 'Select an existing token from the dropdown or enter a new ERC20 token address to create a flash loan pool.'
               : 'Deposit a new ERC20 token to create a flash loan pool. Enter the token contract address and the amount you want to deposit.'
@@ -329,10 +329,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
                     height="16" 
                     viewBox="0 0 16 16" 
                     fill="none"
-                    style={{ 
-                      transform: showDropdown ? 'rotate(180deg)' : 'rotate(0deg)',
-                      transition: 'transform 0.2s ease'
-                    }}
+                    className={showDropdown ? 'token-dropdown-arrow-rotated' : 'token-dropdown-arrow'}
                   >
                     <path 
                       d="M4 6L8 10L12 6" 
@@ -405,12 +402,12 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
               <div className="form-help">
                 Minimum deposit: 100M wei (0.0000001 {tokenInfo.symbol})
                 {allowance > BigInt(0) && (
-                  <div style={{ marginTop: '4px', color: '#10b981' }}>
+                  <div className="token-allowance-display">
                     ✅ Current allowance: {ethers.formatUnits(allowance, tokenInfo.decimals)} {tokenInfo.symbol}
                   </div>
                 )}
                 {isCheckingApproval && (
-                  <div style={{ marginTop: '4px', color: '#6b7280' }}>
+                  <div className="token-checking-approval">
                     🔄 Checking approval status...
                   </div>
                 )}
@@ -420,7 +417,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
 
           {/* Error Display */}
           {error && (
-            <div className="form-error" style={{ marginTop: '12px' }}>
+            <div className="form-error token-form-error-margin">
               {error}
             </div>
           )}

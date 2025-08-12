@@ -632,7 +632,7 @@ export default function Pool() {
                     className="token-icon"
                     onError={handleImageError}
                   />
-                  <div className="avatar" style={{ display: 'none' }} />
+                  <div className="avatar pool-avatar-fallback" />
                 </div>
                 <div>
                   <h3 className="pool-title">{poolData.symbol || 'Unknown'} Pool</h3>
@@ -755,7 +755,7 @@ export default function Pool() {
                               <div className="governance-progress-bar">
                                 <div 
                                   className="governance-progress-fill"
-                                  style={{ width: `${vote.percentage}%` }}
+                                  style={{'--percentage': `${vote.percentage}%`} as React.CSSProperties}
                                 />
                               </div>
                               <span className="governance-percentage-text">
@@ -927,7 +927,7 @@ export default function Pool() {
                         {userPosition.voteSelection ? `${(userPosition.voteSelection / 100).toFixed(2)}%` : 'No vote'}
                       </div>
                       {userPosition.voteSelection && proposalStatus && (
-                        <div className="stat-note" style={{ fontSize: '0.75rem', marginTop: '4px', color: 'var(--text-secondary)' }}>
+                        <div className="pool-proposal-status-note">
                           {proposalStatus.canExecute 
                             ? '✅ Ready to execute' 
                             : proposalStatus.exists 
@@ -974,9 +974,8 @@ export default function Pool() {
                             <>
                               {showApprove && (
                                 <button 
-                                  className="btn-md primary" 
+                                  className={`btn-md primary ${showDeposit ? 'pool-approve-button-with-margin' : 'pool-approve-button-no-margin'}`}
                                   onClick={() => openModal('approve')}
-                                  style={{ marginRight: showDeposit ? '8px' : '0' }}
                                 >
                                   Approve
                                 </button>
@@ -1049,9 +1048,8 @@ export default function Pool() {
                             <>
                               {showApprove && (
                                 <button 
-                                  className="btn-lg primary" 
+                                  className={`btn-lg primary ${showDeposit ? 'pool-approve-button-with-margin' : 'pool-approve-button-no-margin'}`}
                                   onClick={() => openModal('approve')}
-                                  style={{ marginRight: showDeposit ? '8px' : '0' }}
                                 >
                                   Approve
                                 </button>

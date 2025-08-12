@@ -59,7 +59,7 @@ const DashboardTableRow = React.memo<DashboardTableRowProps>(({
   };
 
   return (
-    <tr onClick={handleRowClick} style={{ cursor: 'pointer' }}>
+    <tr onClick={handleRowClick} className="dashboard-row">
       <td>
         <div className="asset-cell">
           <div className="token-avatar">
@@ -69,24 +69,19 @@ const DashboardTableRow = React.memo<DashboardTableRowProps>(({
               className="token-icon"
               onError={handleImageError}
             />
-            <div className="avatar" style={{ display: 'none' }} />
+            <div className="avatar pool-avatar-fallback" />
           </div>
-          <div style={{ flex: 1 }}>
+          <div className="row-asset-content">
             <div className="sym">
               <span>{row.symbol}</span>
               {row.hasUserDeposits && (
-                <span style={{ 
-                  marginLeft: '8px', 
-                  color: '#22c55e', 
-                  fontSize: '0.75rem',
-                  fontWeight: 'bold'
-                }}>
+                <span className="row-user-indicator">
                   ●
                 </span>
               )}
             </div>
             <div className="nm">{row.name}</div>
-            <div style={{ fontSize: '0.7rem', color: 'gray', fontFamily: 'monospace' }}>
+            <div className="row-address-short">
               {row.address.slice(0, 10)}...
             </div>
           </div>
@@ -98,26 +93,26 @@ const DashboardTableRow = React.memo<DashboardTableRowProps>(({
       <td className="center">
         <div className="status-info">
           {isConnected && address ? (
-            <div style={{ fontSize: '0.85em', lineHeight: '1.3' }}>
-              <div style={{ marginBottom: '2px' }}>
-                <span style={{ color: '#6b7280' }}>Wallet:</span>{' '}
-                <span style={{ fontWeight: '500' }}>{formatAmount(row.walletBalance)} {row.symbol}</span>
+            <div className="row-status-info">
+              <div className="row-status-item">
+                <span className="row-status-label">Wallet:</span>{' '}
+                <span className="row-status-value">{formatAmount(row.walletBalance)} {row.symbol}</span>
               </div>
-              <div style={{ marginBottom: '2px' }}>
-                <span style={{ color: '#6b7280' }}>Approved:</span>{' '}
-                <span style={{ fontWeight: '500', color: row.approvedAmount && parseFloat(row.approvedAmount) > 0 ? '#10b981' : '#6b7280' }}>
+              <div className="row-status-item">
+                <span className="row-status-label">Approved:</span>{' '}
+                <span className={row.approvedAmount && parseFloat(row.approvedAmount) > 0 ? 'row-status-value-approved' : 'row-status-value-gray'}>
                   {formatAmount(row.approvedAmount)} {row.symbol}
                 </span>
               </div>
               <div>
-                <span style={{ color: '#6b7280' }}>Deposited:</span>{' '}
-                <span style={{ fontWeight: '500', color: row.depositedAmount && parseFloat(row.depositedAmount) > 0 ? '#3b82f6' : '#6b7280' }}>
+                <span className="row-status-label">Deposited:</span>{' '}
+                <span className={row.depositedAmount && parseFloat(row.depositedAmount) > 0 ? 'row-status-value-deposited' : 'row-status-value-gray'}>
                   {formatAmount(row.depositedAmount)} {row.symbol}
                 </span>
               </div>
             </div>
           ) : (
-            <div style={{ color: '#9ca3af', fontSize: '0.875em' }}>
+            <div className="row-status-disconnected">
               Connect wallet to view status
             </div>
           )}

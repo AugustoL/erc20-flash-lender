@@ -247,7 +247,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
         </div>
 
         <div className="modal-body">
-          <p className="form-help" style={{ marginBottom: '20px' }}>
+          <p className="form-help action-modal-help-text">
             {getModalDescription()}
           </p>
 
@@ -258,7 +258,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
                   <label className="form-label">
                     Withdrawal Type
                   </label>
-                  <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                  <div className="action-modal-withdrawal-type-buttons">
                     <button
                       type="button"
                       className={`btn-md ${withdrawType === 'all' ? 'primary' : 'outline'}`}
@@ -311,10 +311,9 @@ const ActionModal: React.FC<ActionModalProps> = ({
                       {action === 'approve' && (
                         <button
                           type="button"
-                          className="btn-xs outline"
+                          className="btn-xs outline action-modal-unlimited-button"
                           onClick={handleInfiniteClick}
                           disabled={isLoading}
-                          style={{ marginLeft: '4px' }}
                         >
                           Unlimited
                         </button>
@@ -334,7 +333,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
                       }
                     </span>
                     {(action === 'deposit' || action === 'approve') && (!availableBalance || availableBalance === '0') && (
-                      <div style={{ fontSize: '0.8em', color: '#888', marginTop: '4px' }}>
+                      <div className="action-modal-balance-note">
                         Note: Make sure you have {tokenSymbol} tokens in your wallet
                       </div>
                     )}
