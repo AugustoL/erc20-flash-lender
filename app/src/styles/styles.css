@@ -346,6 +346,33 @@ body {
   box-shadow: 0 0 0 2px #1e293b, 0 0 0 4px rgba(99, 102, 241, 0.35);
 }
 
+.token-avatar .avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent-grad);
+  box-shadow: 0 0 0 2px #1e293b, 0 0 0 4px rgba(99, 102, 241, 0.35);
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.token-avatar {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.token-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 2px #1e293b, 0 0 0 4px rgba(99, 102, 241, 0.15);
+}
+
 .asset-cell .sym {
   font-weight: 600;
   font-size: 0.9rem;

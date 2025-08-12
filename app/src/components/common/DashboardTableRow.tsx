@@ -44,11 +44,33 @@ const DashboardTableRow = React.memo<DashboardTableRowProps>(({
     navigate(`/pool/${row.address}`);
   };
 
+  const getTokenIconUrl = (tokenAddress: string): string => {
+    return `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/${ethers.getAddress(tokenAddress)}/logo.png`;
+  };
+
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    const img = e.target as HTMLImageElement;
+    img.style.display = 'none';
+    // Show the fallback avatar
+    const fallback = img.nextElementSibling as HTMLElement;
+    if (fallback) {
+      fallback.style.display = 'block';
+    }
+  };
+
   return (
     <tr onClick={handleRowClick} style={{ cursor: 'pointer' }}>
       <td>
         <div className="asset-cell">
-          <div className="avatar" />
+          <div className="token-avatar">
+            <img 
+              src={getTokenIconUrl(row.address)}
+              alt={`${row.symbol} logo`}
+              className="token-icon"
+              onError={handleImageError}
+            />
+            <div className="avatar" style={{ display: 'none' }} />
+          </div>
           <div style={{ flex: 1 }}>
             <div className="sym">
               <span>{row.symbol}</span>

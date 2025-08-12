@@ -279,6 +279,21 @@ export default function Pool() {
     }
   }, []);
 
+  // Token icon helpers
+  const getTokenIconUrl = useCallback((tokenAddress: string): string => {
+    return `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/${ethers.getAddress(tokenAddress)}/logo.png`;
+  }, []);
+
+  const handleImageError = useCallback((e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    const img = e.target as HTMLImageElement;
+    img.style.display = 'none';
+    // Show the fallback avatar
+    const fallback = img.nextElementSibling as HTMLElement;
+    if (fallback) {
+      fallback.style.display = 'block';
+    }
+  }, []);
+
   // Get appropriate button text based on proposal status
   const getChangeFeeButtonText = () => {
     if (isLoadingProposal) return 'Creating Proposal...';
@@ -610,7 +625,15 @@ export default function Pool() {
             <div className="card-head">
               <div className="pool-header">
               <div className="pool-header-info">
-                <div className="avatar" />
+                <div className="token-avatar">
+                  <img 
+                    src={getTokenIconUrl(poolData.address)}
+                    alt={`${poolData.symbol} logo`}
+                    className="token-icon"
+                    onError={handleImageError}
+                  />
+                  <div className="avatar" style={{ display: 'none' }} />
+                </div>
                 <div>
                   <h3 className="pool-title">{poolData.symbol || 'Unknown'} Pool</h3>
                   <div className="pool-subtitle">
