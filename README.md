@@ -668,6 +668,70 @@ The development deployment script (`deploy-dev.ts`) will:
 
 This setup provides a complete local testing environment with realistic token scenarios and pre-funded accounts for immediate testing of flash loans, deposits, withdrawals, and governance features.
 
+## React DApp Frontend
+
+The project includes a comprehensive React-based decentralized application (DApp) that provides a user-friendly interface for interacting with the ERC20 Flash Lender protocol.
+
+### ✨ DApp Features
+
+- 🎨 **Modern UI/UX**: Built with React 18 and modern design patterns
+- 🌐 **Web3 Integration**: Seamless wallet connection via RainbowKit and Wagmi
+- 📊 **Real-time Dashboard**: Live pool statistics, user positions, and earnings tracking
+- 💰 **Pool Management**: Deposit, withdraw, and harvest fees with intuitive controls
+- 🗳️ **Governance Interface**: Vote on fee rates and propose changes through the UI
+- 📈 **Activity Tracking**: Comprehensive transaction history and analytics
+- 🌙 **Theme Support**: Light/dark mode with user preferences
+- ⚡ **Performance Optimized**: Lazy loading, memoization, and code splitting
+- 🛡️ **Error Boundaries**: Graceful error handling with fallback UI
+- 🔒 **Web3 Security**: Built-in provider validation and secure transaction handling
+- 📱 **Responsive Design**: Works seamlessly on desktop and mobile devices
+
+### 🚀 Quick Start (Frontend)
+
+```bash
+# Navigate to app directory
+cd app
+
+# Install dependencies
+npm install
+
+# Start development server
+npm start
+
+# Build for production
+npm run build
+```
+
+### 📁 DApp Architecture
+
+```
+app/
+├── src/
+│   ├── components/           # React components
+│   │   ├── common/          # Reusable UI components
+│   │   └── pages/           # Page-level components
+│   ├── context/             # React context providers
+│   ├── hooks/               # Custom React hooks
+│   ├── services/            # Data services and API layers
+│   ├── utils/               # Utility functions and constants
+│   └── types/               # TypeScript type definitions
+├── public/                  # Static assets
+└── package.json            # Dependencies and scripts
+```
+
+### 🔧 Configuration
+
+The DApp automatically detects your network and connects to the appropriate contracts. For local development:
+
+1. Start the Hardhat node: `npm run node`
+2. Deploy contracts: `npm run deploy:dev`
+3. Start the React app: `cd app && npm start`
+4. Connect MetaMask to localhost:8545
+
+### 📖 DApp Documentation
+
+For detailed frontend documentation, component guides, and development setup, see [app/README.md](app/README.md).
+
 ## Architecture
 
 ```
