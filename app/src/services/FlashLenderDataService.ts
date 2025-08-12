@@ -1,6 +1,8 @@
 // @ts-nocheck
 import { ethers } from 'ethers';
 import { Contract } from 'ethers';
+import { getERC20FlashLenderAddress } from '../config';
+import ERC20FlashLenderABI from '../contracts/ERC20FlashLender.json';
 import {
   TokenPoolData,
   UserPositionData,
@@ -19,14 +21,62 @@ export class FlashLenderDataService {
   private cacheTimeout = 10000; // 10 seconds cache
   private contractAddress: string;
   
-  constructor(
-    provider: ethers.Provider,
-    contractAddress: string,
-    contractABI: any[]
-  ) {
-    this.provider = provider;
-    this.contract = new Contract(contractAddress, contractABI, provider);
+  constructor(chainId?: number) {
+    // Create provider from current environment
+    this.provider = this.createProvider();
+    
+    // Get contract address for the current chain
+    const currentChainId = chainId || 31337; // Default to localhost
+    const contractAddress = getERC20FlashLenderAddress(currentChainId);
+    
+    if (!contractAddress) {
+      throw new Error(`No contract address found for chain ${currentChainId}`);
+    }
+    
     this.contractAddress = contractAddress;
+    this.contract = new Contract(contractAddress, ERC20FlashLenderABI.abi, this.provider);
+  }
+  
+  /**
+   * Create an ethers provider from the current environment
+   */
+  private createProvider(): ethers.Provider {
+    // Try to use window.ethereum if available (browser environment)
+    if (typeof window !== 'undefined' && window.ethereum) {
+      return new ethers.BrowserProvider(window.ethereum);
+    }
+    
+    // For development, try different localhost URLs
+    const rpcUrls = [
+      'http://localhost:8545',
+      'http://127.0.0.1:8545',
+    ];
+    
+    // Try each URL and return the first working one
+    for (const url of rpcUrls) {
+      try {
+        return new ethers.JsonRpcProvider(url);
+      } catch (error) {
+        console.warn(`Failed to connect to ${url}:`, error);
+      }
+    }
+    
+    // Fallback to default localhost
+    return new ethers.JsonRpcProvider('http://localhost:8545');
+  }
+  
+  /**
+   * Update the service for a different chain
+   */
+  updateChain(chainId: number) {
+    const contractAddress = getERC20FlashLenderAddress(chainId);
+    if (!contractAddress) {
+      throw new Error(`No contract address found for chain ${chainId}`);
+    }
+    
+    this.contractAddress = contractAddress;
+    this.contract = new Contract(contractAddress, ERC20FlashLenderABI.abi, this.provider);
+    this.clearCache(); // Clear cache when changing chains
   }
 
   // ==================== BATCHED DATA FETCHING ====================

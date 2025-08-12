@@ -1,34 +1,36 @@
 import { useParams } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
-import { usePublicClient } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { ethers } from 'ethers';
 import { FlashLenderDataService } from '../../services/FlashLenderDataService';
-import { ERC20FlashLenderAddress } from '../../utils/constants';
-import ERC20FlashLenderABI from '../../contracts/ERC20FlashLender.json';
 import { UserAction } from '../../types';
 
 export default function Activity() {
   const { userAddress } = useParams<{ userAddress: string }>();
-  const publicClient = usePublicClient();
+  const { chainId } = useAccount();
+  
+  // Get the current chain ID
+  const currentChainId = chainId || 31337; // Default to localhost if no chain
   const [actions, setActions] = useState<UserAction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokenMetadata, setTokenMetadata] = useState<Map<string, { symbol: string; decimals: number }>>(new Map());
 
-  // Create ethers provider from wagmi public client
+  // Create ethers provider
   const provider = useMemo(() => {
-    const rpcUrl = publicClient?.transport?.url || 'http://localhost:8545';
+    const rpcUrl = 'http://localhost:8545'; // Default to localhost
     return new ethers.JsonRpcProvider(rpcUrl);
-  }, [publicClient?.transport?.url]);
+  }, []);
 
   // Initialize service
   const service = useMemo(() => {
-    return new FlashLenderDataService(
-      provider,
-      ERC20FlashLenderAddress,
-      ERC20FlashLenderABI.abi
-    );
-  }, [provider]);
+    try {
+      return new FlashLenderDataService(currentChainId);
+    } catch (error) {
+      console.error('Failed to initialize FlashLenderDataService:', error);
+      return null;
+    }
+  }, [currentChainId]);
 
   // Fetch user actions
   useEffect(() => {

@@ -322,8 +322,6 @@ export interface IAppContext {
  * Configuration for useFlashLender hook
  */
 export interface UseFlashLenderConfig {
-  contractAddress: string;
-  contractABI: any[];
   provider: ethers.Provider;
   userAddress?: string;
   autoRefresh?: boolean;

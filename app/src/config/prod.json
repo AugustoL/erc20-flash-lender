@@ -1,0 +1,31 @@
+{
+  "networks": [
+    {
+      "chainId": 1,
+      "name": "Ethereum Mainnet",
+      "currency": "ETH",
+      "explorerUrl": "https://etherscan.io",
+      "publicProviders": [
+        "https://eth-mainnet.public.blastapi.io",
+        "https://rpc.ankr.com/eth"
+      ],
+      "contracts": [
+        {
+          "name": "ERC20FlashLender",
+          "version": "1.0.0",
+          "address": "0x1234567890123456789012345678901234567890"
+        },
+        {
+          "name": "ERC20FlashLoanExecutorFactory",
+          "version": "1.0.0",
+          "address": "0x2345678901234567890123456789012345678901"
+        },
+        {
+          "name": "Multicall3",
+          "version": "1.0.0",
+          "address": "0xcA11bde05977b3631167028862bE2a173976CA11"
+        }
+      ]
+    }
+  ]
+}

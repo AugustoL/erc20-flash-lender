@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ethers } from 'ethers';
+import { useAccount } from 'wagmi';
 import { FlashLenderDataService } from '../services/FlashLenderDataService';
 import { useSettings } from '../context/SettingsContext';
+import { getERC20FlashLenderAddress } from '../config';
+import ERC20FlashLenderABI from '../contracts/ERC20FlashLender.json';
 import {
   UseFlashLenderConfig,
   PoolData,
@@ -10,14 +13,21 @@ import {
 } from '../types';
 
 export function useFlashLender({
-  contractAddress,
-  contractABI,
   provider,
   userAddress,
   autoRefresh = false,
   refreshInterval = 30000,
   cacheTimeout = 60000
 }: UseFlashLenderConfig) {
+  // Get chain ID from wagmi
+  const { chainId } = useAccount();
+  
+  // Use current chain ID (defaults to localhost if no chain)
+  const currentChainId = chainId || 31337;
+  
+  // Get settings for APY calculation
+  const { settings } = useSettings();
+  
   // State
   const [pools, setPools] = useState<PoolData[]>([]);
   const [userPositions, setUserPositions] = useState<UserPosition[]>([]);
@@ -25,19 +35,18 @@ export function useFlashLender({
   const [error, setError] = useState<Error | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
-  // Get settings for APY calculation
-  const { settings } = useSettings();
-
-  // Initialize service
+  // Initialize service (with error handling)
   const service = useMemo(() => {
-    const svc = new FlashLenderDataService(
-      provider,
-      contractAddress,
-      contractABI
-    );
-    svc.setCacheTimeout(cacheTimeout);
-    return svc;
-  }, [contractAddress, contractABI, provider, cacheTimeout]);
+    try {
+      const svc = new FlashLenderDataService(currentChainId);
+      svc.setCacheTimeout(cacheTimeout);
+      return svc;
+    } catch (error) {
+      console.error('Failed to initialize FlashLenderDataService:', error);
+      setError(error as Error);
+      return null;
+    }
+  }, [currentChainId, cacheTimeout]);
 
   // Format utilities - These are stable and don't need dependencies
   const formatTokenAmount = useCallback((amount: bigint, decimals: number = 18): string => {
@@ -55,6 +64,11 @@ export function useFlashLender({
 
   // Fetch pool data
   const fetchPools = useCallback(async () => {
+    if (!service) {
+      console.warn('Service not available - contract address not found');
+      return;
+    }
+    
     try {
       const poolsData = await service.getAllTokenPools(userAddress);
       console.log('Raw pool data from service:', poolsData);
@@ -154,7 +168,7 @@ export function useFlashLender({
 
   // Fetch user positions - standalone version for use in fetchData
   const fetchUserPositionsWithPools = useCallback(async (poolsData: PoolData[]) => {
-    if (!userAddress) return;
+    if (!userAddress || !service) return;
     
     try {
       const positions = await service.getUserPositions(userAddress);
@@ -168,7 +182,7 @@ export function useFlashLender({
 
   // Fetch user positions - version that uses current pools state
   const fetchUserPositions = useCallback(async () => {
-    if (!userAddress) return;
+    if (!userAddress || !service) return;
     
     try {
       const positions = await service.getUserPositions(userAddress);
@@ -182,6 +196,12 @@ export function useFlashLender({
 
   // Main fetch function
   const fetchData = useCallback(async () => {
+    if (!service) {
+      console.warn('Service not available - contract address not found');
+      setIsLoading(false);
+      return;
+    }
+    
     setIsLoading(true);
     setError(null);
     
@@ -265,6 +285,16 @@ export function useFlashLender({
       amountBigInt = ethers.parseUnits(amount, pool?.decimals || 18);
     }
     
+    if (!service) {
+      throw new Error('Service not initialized');
+    }
+    
+    // Get contract address from service
+    const contractAddress = getERC20FlashLenderAddress(currentChainId);
+    if (!contractAddress) {
+      throw new Error(`Contract address not found for chain ${currentChainId}`);
+    }
+    
     // Create token contract with signer
     const tokenContract = new ethers.Contract(
       tokenAddress,
@@ -279,7 +309,7 @@ export function useFlashLender({
     await approveTx.wait();
     
     // Note: Components should handle refresh with cache clearing and delay
-  }, [pools, contractAddress]);
+  }, [pools, service, currentChainId]);
 
   const deposit = useCallback(async (
     tokenAddress: string,
@@ -526,7 +556,7 @@ export function useFlashLender({
     
     // Utilities
     refresh: fetchData,
-    clearCache: () => service.clearCache(),
+    clearCache: () => service?.clearCache(),
     checkApprovalNeeded,
     getUserBalance,
     getUserAllowance,

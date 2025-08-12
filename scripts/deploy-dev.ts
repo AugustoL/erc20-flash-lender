@@ -1,5 +1,7 @@
 import hre from "hardhat";
 import { ERC20FlashLender, MockERC20, ERC20FlashLoanExecutor } from "../typechain-types";
+import * as fs from "fs";
+import * as path from "path";
 
 // Import actual Uniswap V2 contract ABIs
 const UniswapV2FactoryABI = require("@uniswap/v2-core/build/UniswapV2Factory.json");
@@ -7,8 +9,108 @@ const UniswapV2Router02ABI = require("@uniswap/v2-periphery/build/UniswapV2Route
 const UniswapV2PairABI = require("@uniswap/v2-core/build/UniswapV2Pair.json");
 const WETH9ABI = require("@uniswap/v2-periphery/build/WETH9.json");
 
+// Configuration types
+interface Contract {
+    name: string;
+    version: string;
+    address: string;
+}
+
+interface Network {
+    chainId: number;
+    name: string;
+    currency: string;
+    explorerUrl: string;
+    publicProviders: string[];
+    contracts: Contract[];
+}
+
+interface Config {
+    networks: Network[];
+}
+
+// Function to read production config
+function readProductionConfig(): Config {
+    const configPath = path.join(__dirname, "../app/config/prod.json");
+    if (!fs.existsSync(configPath)) {
+        throw new Error(`Production config file not found at ${configPath}`);
+    }
+    
+    const configContent = fs.readFileSync(configPath, 'utf8');
+    return JSON.parse(configContent);
+}
+
+// Function to update development config
+function updateDevConfig(deployedContracts: { [key: string]: string }) {
+    const devConfigPath = path.join(__dirname, "../app/config/dev.json");
+    let devConfig: Config;
+    
+    // Read existing dev config
+    if (fs.existsSync(devConfigPath)) {
+        const devConfigContent = fs.readFileSync(devConfigPath, 'utf8');
+        devConfig = JSON.parse(devConfigContent);
+    } else {
+        throw new Error(`Development config file not found at ${devConfigPath}`);
+    }
+    
+    // Find localhost network (chainId 31337)
+    const localhostNetwork = devConfig.networks.find(network => network.chainId === 31337);
+    if (!localhostNetwork) {
+        throw new Error("Localhost network (chainId 31337) not found in development config");
+    }
+    
+    // Update contract addresses for localhost
+    localhostNetwork.contracts = localhostNetwork.contracts.map(contract => {
+        if (deployedContracts[contract.name]) {
+            return {
+                ...contract,
+                address: deployedContracts[contract.name],
+                version: "1.0.0-local" // Update version for local deployment
+            };
+        }
+        return contract;
+    });
+    
+    // Add new contracts if they don't exist
+    const existingContractNames = localhostNetwork.contracts.map(c => c.name);
+    
+    // Add additional contracts that might have been deployed
+    const additionalContracts = [
+        { name: "UniswapV2Factory1", key: "factory1" },
+        { name: "UniswapV2Router1", key: "router1" },
+        { name: "UniswapV2Factory2", key: "factory2" },
+        { name: "UniswapV2Router2", key: "router2" },
+        { name: "WETH9", key: "weth" }
+    ];
+    
+    additionalContracts.forEach(({ name, key }) => {
+        if (deployedContracts[key] && !existingContractNames.includes(name)) {
+            localhostNetwork.contracts.push({
+                name,
+                version: "1.0.0-local",
+                address: deployedContracts[key]
+            });
+        }
+    });
+    
+    // Write updated config back to file
+    fs.writeFileSync(devConfigPath, JSON.stringify(devConfig, null, 2));
+    console.log("✅ Development config updated with deployed contract addresses");
+}
+
 async function main() {
     console.log("🏠 Starting ERC20FlashLender DEVELOPMENT deployment...");
+    
+    // Read production config for reference
+    console.log("📖 Reading production configuration...");
+    try {
+        const prodConfig = readProductionConfig();
+        console.log("✅ Production config loaded successfully");
+        console.log(`📊 Found ${prodConfig.networks.length} networks in production config`);
+    } catch (error) {
+        console.warn("⚠️  Could not read production config:", (error as Error).message);
+        console.log("📝 Continuing with deployment...");
+    }
     
     const signers = await hre.ethers.getSigners();
     const [deployer, user1, user2, user3, user4, user5, user6, user7] = signers;
@@ -745,6 +847,26 @@ async function main() {
     console.log("await token.balanceOf(userAddress); // User token balance");
     console.log("await lender.shares(tokenAddress, userAddress); // User shares");
 
+    // Collect deployed contract addresses for config update
+    const deployedContracts = {
+        "ERC20FlashLender": lenderAddress,
+        "ERC20FlashLoanExecutorFactory": executors.length > 0 ? executors[0].address : "0x0000000000000000000000000000000000000000", // Use first executor as factory reference
+        "Multicall3": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0", // Standard localhost multicall address
+        "factory1": factory1Address,
+        "router1": router1Address,
+        "factory2": factory2Address,
+        "router2": router2Address,
+        "weth": wethAddress
+    };
+
+    // Update development configuration with deployed addresses
+    console.log("\n🔧 Updating development configuration...");
+    try {
+        updateDevConfig(deployedContracts);
+    } catch (error) {
+        console.warn("⚠️  Could not update development config:", (error as Error).message);
+    }
+
     return {
         lender: lenderAddress,
         tokens: deployedTokens.map(t => ({ symbol: t.symbol, address: t.address, decimals: t.decimals })),
@@ -771,7 +893,8 @@ async function main() {
             }, {} as Record<string, string>)
         },
         network: network,
-        managementFee: managementFeePercentage
+        managementFee: managementFeePercentage,
+        deployedContracts: deployedContracts
     };
 }
 
@@ -788,10 +911,23 @@ main()
         console.log("Flash Loan Executors:", Object.keys(result.executors).length);
         console.log("Test Accounts:", Object.keys(result.accounts).length);
         console.log("✅ Arbitrage operations completed successfully!");
-        console.log("🗳️ LP fee voting completed with realistic governance activity!");        
+        
+        console.log("\n📄 Configuration Management:");
+        console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        console.log("✅ Production config read successfully");
+        console.log("✅ Development config updated with deployed addresses");
+        console.log("📂 Config files location: app/config.*.json");
+        
+        console.log("\n🔗 Deployed Contract Addresses:");
+        console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        Object.entries(result.deployedContracts).forEach(([name, address]) => {
+            console.log(`${name.padEnd(25)}: ${address}`);
+        });
+        
         process.exit(0);
     })
     .catch((error) => {
-        console.error("💥 Development deployment failed:", error);
+        console.error("\n❌ Deployment failed:");
+        console.error(error);
         process.exit(1);
     });

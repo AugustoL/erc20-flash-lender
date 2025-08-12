@@ -3,8 +3,6 @@ import { useParams, Link } from 'react-router-dom';
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import { ethers } from 'ethers';
 import { useFlashLender } from '../../hooks/useFlashLender';
-import { ERC20FlashLenderAddress } from '../../utils/constants';
-import ERC20FlashLenderABI from '../../contracts/ERC20FlashLender.json';
 import { FlashLenderDataService } from '../../services/FlashLenderDataService';
 import ActionModal, { ActionType } from '../common/ActionModal';
 import ActivityList from '../common/ActivityList';
@@ -19,7 +17,7 @@ import {
 
 export default function Pool() {
   const { tokenAddress } = useParams<{ tokenAddress: string }>();
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
   const [poolData, setPoolData] = useState<PoolData | null>(null);
@@ -51,14 +49,18 @@ export default function Pool() {
     return new ethers.JsonRpcProvider(rpcUrl);
   }, [publicClient?.transport?.url]);
 
+  // Get the current chain ID
+  const currentChainId = chainId || 31337; // Default to localhost if no chain
+
   // Create service instance
   const service = React.useMemo(() => {
-    return new FlashLenderDataService(
-      provider,
-      ERC20FlashLenderAddress,
-      ERC20FlashLenderABI.abi
-    );
-  }, [provider]);
+    try {
+      return new FlashLenderDataService(currentChainId);
+    } catch (error) {
+      console.error('Failed to initialize FlashLenderDataService:', error);
+      return null;
+    }
+  }, [currentChainId]);
 
   const {
     pools,
@@ -77,8 +79,6 @@ export default function Pool() {
     shouldShowDepositButton,
     getButtonState
   } = useFlashLender({
-    contractAddress: ERC20FlashLenderAddress,
-    contractABI: ERC20FlashLenderABI.abi,
     provider,
     userAddress: address || undefined,
     autoRefresh: false,

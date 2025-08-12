@@ -50,3 +50,7 @@ dist/
 Thumbs.db
 ehthumbs.db
 .Trashes
+
+# Dev files
+app/config.dev.json
+app/src/config/dev.json

@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import { ethers } from 'ethers';
 import { useFlashLender } from '../../hooks/useFlashLender';
-import { ERC20FlashLenderAddress } from '../../utils/constants';
 import ERC20FlashLenderABI from '../../contracts/ERC20FlashLender.json';
 import ActionModal, { ActionType } from '../common/ActionModal';
 import DashboardTableRow from '../common/DashboardTableRow';
@@ -11,7 +10,7 @@ import { useNotifications } from '../../context/NotificationContext';
 import { useDashboardRows, useAvailableBalance, useAvailableFees, useStableProvider } from '../../hooks/useDashboardData';
 
 export default function Dashboard() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
   
@@ -43,8 +42,6 @@ export default function Dashboard() {
     shouldShowDepositButton,
     getButtonState
   } = useFlashLender({
-    contractAddress: ERC20FlashLenderAddress,
-    contractABI: ERC20FlashLenderABI.abi,
     provider,
     userAddress: address || undefined,
     autoRefresh: false,
@@ -321,7 +318,6 @@ export default function Dashboard() {
         isLoading={isTransactionLoading}
         provider={provider}
         userAddress={address}
-        lenderAddress={ERC20FlashLenderAddress}
         existingTokens={pools.map(pool => ({
           address: pool.address,
           symbol: pool.symbol || 'Unknown',

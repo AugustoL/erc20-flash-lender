@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
+import { useAccount } from 'wagmi';
 import { useDebouncedTokenInfo } from '../../hooks/useTokenInfo';
+import { getERC20FlashLenderAddress } from '../../config';
 import '../../styles/styles.css';
 
 interface TokenOption {
@@ -18,7 +20,6 @@ interface NewTokenDepositModalProps {
   isLoading?: boolean;
   provider?: ethers.Provider;
   userAddress?: string;
-  lenderAddress?: string;
   existingTokens?: TokenOption[];
 }
 
@@ -30,9 +31,12 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
   isLoading = false,
   provider,
   userAddress,
-  lenderAddress,
   existingTokens = []
 }) => {
+  // Get chain ID and lender address
+  const { chainId } = useAccount();
+  const currentChainId = chainId || 31337; // Default to localhost if no chain
+  const lenderAddress = getERC20FlashLenderAddress(currentChainId);
   const [tokenAddress, setTokenAddress] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
