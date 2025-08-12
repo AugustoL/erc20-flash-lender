@@ -1,35 +1,258 @@
 import { useParams } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { usePublicClient } from 'wagmi';
+import { ethers } from 'ethers';
+import { FlashLenderDataService } from '../../services/FlashLenderDataService';
+import { ERC20FlashLenderAddress } from '../../utils/constants';
+import ERC20FlashLenderABI from '../../contracts/ERC20FlashLender.json';
+import { UserAction } from '../../types';
 
 export default function Activity() {
   const { userAddress } = useParams<{ userAddress: string }>();
+  const publicClient = usePublicClient();
+  const [actions, setActions] = useState<UserAction[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [tokenMetadata, setTokenMetadata] = useState<Map<string, { symbol: string; decimals: number }>>(new Map());
+
+  // Create ethers provider from wagmi public client
+  const provider = useMemo(() => {
+    const rpcUrl = publicClient?.transport?.url || 'http://localhost:8545';
+    return new ethers.JsonRpcProvider(rpcUrl);
+  }, [publicClient?.transport?.url]);
+
+  // Initialize service
+  const service = useMemo(() => {
+    return new FlashLenderDataService(
+      provider,
+      ERC20FlashLenderAddress,
+      ERC20FlashLenderABI.abi
+    );
+  }, [provider]);
+
+  // Fetch user actions
+  useEffect(() => {
+    if (!userAddress || !service) return;
+
+    const fetchUserActions = async () => {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        console.log(`Fetching actions for user: ${userAddress}`);
+        
+        // Get all deposited tokens first to fetch actions for each
+        const allPools = await service.getAllTokenPools();
+        const allActions: UserAction[] = [];
+        const metadata = new Map<string, { symbol: string; decimals: number }>();
+
+        // Fetch actions for each token pool
+        for (const pool of allPools) {
+          try {
+            const tokenActions = await service.getUserActions(pool.address, userAddress);
+            allActions.push(...tokenActions);
+            
+            // Store token metadata for formatting
+            if (pool.symbol && pool.decimals !== undefined) {
+              metadata.set(pool.address, {
+                symbol: pool.symbol,
+                decimals: pool.decimals
+              });
+            }
+          } catch (err) {
+            console.warn(`Failed to fetch actions for token ${pool.address}:`, err);
+          }
+        }
+
+        // Sort by block number and log index (most recent first)
+        allActions.sort((a, b) => {
+          if (b.blockNumber !== a.blockNumber) {
+            return b.blockNumber - a.blockNumber;
+          }
+          return b.logIndex - a.logIndex;
+        });
+
+        setActions(allActions);
+        setTokenMetadata(metadata);
+        console.log(`Fetched ${allActions.length} actions for user`);
+      } catch (err) {
+        console.error('Error fetching user actions:', err);
+        setError(err instanceof Error ? err.message : 'Failed to fetch user actions');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUserActions();
+  }, [userAddress, service]);
+
+  // Format token amount
+  const formatAmount = (amount: string, tokenAddress: string): string => {
+    const metadata = tokenMetadata.get(tokenAddress);
+    if (!metadata) return 'Unknown amount';
+    
+    try {
+      const formatted = parseFloat(amount) / Math.pow(10, metadata.decimals);
+      return `${formatted.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 6
+      })} ${metadata.symbol}`;
+    } catch {
+      return 'Invalid amount';
+    }
+  };
+
+  // Format timestamp
+  const formatTime = (timestamp: number): string => {
+    return new Date(timestamp * 1000).toLocaleString();
+  };
+
+  // Get action type emoji and color
+  const getActionStyle = (type: string) => {
+    switch (type) {
+      case 'deposit':
+        return { emoji: '💰', color: 'var(--success)' };
+      case 'withdraw':
+        return { emoji: '💸', color: 'var(--warning)' };
+      case 'flashloan':
+        return { emoji: '⚡', color: 'var(--accent)' };
+      case 'vote':
+        return { emoji: '🗳️', color: 'var(--accent-alt)' };
+      case 'fee_collection':
+        return { emoji: '💎', color: 'var(--gold)' };
+      case 'fee_proposal':
+        return { emoji: '📝', color: '#06b6d4' };
+      case 'fee_execution':
+        return { emoji: '✅', color: '#10b981' };
+      default:
+        return { emoji: '📝', color: 'var(--text-sec)' };
+    }
+  };
+
+  if (!userAddress) {
+    return (
+      <div className="dash-container">
+        <div className="card surface">
+          <div className="card-head">
+            <h3>User Activity</h3>
+          </div>
+          <div className="activity-error">
+            <p className="activity-error-text">No user address provided</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="dash-container">
       <div className="card surface">
         <div className="card-head">
           <h3>User Activity</h3>
-        </div>
-        <div style={{ padding: '40px 24px', textAlign: 'center' }}>
-          <p style={{ color: 'var(--text-sec)', marginBottom: '20px' }}>
-            <strong>Parameter received:</strong> {userAddress || 'No user address provided'}
+          <p className="activity-header-subtitle">
+            Address: {userAddress}
           </p>
-          <p style={{ color: 'var(--text-primary)' }}>
-            This view will display:
-          </p>
-          <ul style={{ 
-            listStyle: 'none', 
-            padding: 0, 
-            color: 'var(--text-sec)', 
-            lineHeight: '1.8' 
-          }}>
-            <li>📊 Flash loan history for the user</li>
-            <li>💰 Deposit and withdrawal transactions</li>
-            <li>🗳️ Fee voting activity</li>
-            <li>📈 Earnings and fee distributions</li>
-            <li>⏰ Transaction timestamps and status</li>
-            <li>🔗 Links to view transactions on block explorer</li>
-          </ul>
         </div>
+
+        {isLoading ? (
+          <div className="activity-loading">
+            <p className="activity-loading-text">Loading user activity...</p>
+          </div>
+        ) : error ? (
+          <div className="activity-error">
+            <p className="activity-error-text">Error: {error}</p>
+          </div>
+        ) : actions.length === 0 ? (
+          <div className="activity-empty">
+            <p className="activity-empty-text">No activity found for this user</p>
+          </div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="dash-table">
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Token</th>
+                  <th>Amount</th>
+                  <th>Fee</th>
+                  <th>Time</th>
+                  <th>Block</th>
+                  <th>Tx Hash</th>
+                </tr>
+              </thead>
+              <tbody>
+                {actions.map((action, index) => {
+                  const style = getActionStyle(action.type);
+                  return (
+                    <tr key={`${action.transactionHash}-${action.logIndex}`}>
+                      <td>
+                        <div className={`activity-action-cell activity-action-${action.type}`}>
+                          <span>{style.emoji}</span>
+                          <span>
+                            {action.type === 'fee_proposal' ? 'Fee Proposal' :
+                             action.type === 'fee_execution' ? 'Fee Execution' :
+                             action.type === 'fee_collection' ? 'Fee Collection' :
+                             action.type}
+                          </span>
+                          {action.type === 'vote' && action.feeSelection && (
+                            <span className="activity-vote-details">
+                              {`${(action.feeSelection / 100).toFixed(2)}%`}
+                            </span>
+                          )}
+                          {action.type === 'fee_proposal' && action.proposedFee !== undefined && (
+                            <span className="activity-vote-details">
+                              {`${(action.proposedFee / 100).toFixed(2)}%`}
+                            </span>
+                          )}
+                          {action.type === 'fee_execution' && action.oldFee !== undefined && action.newFee !== undefined && (
+                            <span className="activity-vote-details">
+                              {`${(action.oldFee / 100).toFixed(2)}% → ${(action.newFee / 100).toFixed(2)}%`}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="asset-cell">
+                          <div className="sym">
+                            {tokenMetadata.get(action.token)?.symbol || 'Unknown'}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        {action.amount ? formatAmount(action.amount, action.token) : '-'}
+                      </td>
+                      <td>
+                        {action.fee ? formatAmount(action.fee, action.token) : '-'}
+                      </td>
+                      <td className="activity-time-cell">
+                        {formatTime(action.timestamp)}
+                      </td>
+                      <td className="activity-block-cell">
+                        {action.blockNumber.toLocaleString()}
+                      </td>
+                      <td>
+                        <a 
+                          href={`https://etherscan.io/tx/${action.transactionHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="activity-tx-link"
+                        >
+                          {action.transactionHash.slice(0, 8)}...{action.transactionHash.slice(-6)}
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {actions.length > 0 && (
+          <div className="activity-footer">
+            <p>Total activity records: {actions.length}</p>
+          </div>
+        )}
       </div>
     </div>
   );

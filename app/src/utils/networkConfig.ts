@@ -12,5 +12,5 @@ export const networkConfig = getDefaultConfig({
   appName: 'ERC20 Flash Lender',
   projectId: 'erc20FlashLender',
   chains: [hardhat, mainnet, polygon, optimism, arbitrum, base],
-  ssr: false,
+  ssr: false
 });

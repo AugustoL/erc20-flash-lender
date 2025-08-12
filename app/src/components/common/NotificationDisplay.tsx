@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNotifications } from '../../context/NotificationContext';
 
-const NotificationDisplay: React.FC = () => {
+const NotificationDisplay: React.FC = React.memo(() => {
   const { notifications, removeNotification } = useNotifications();
 
   if (notifications.length === 0) {
@@ -29,6 +29,8 @@ const NotificationDisplay: React.FC = () => {
       ))}
     </div>
   );
-};
+});
+
+NotificationDisplay.displayName = 'NotificationDisplay';
 
 export default NotificationDisplay;

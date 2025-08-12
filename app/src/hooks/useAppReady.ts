@@ -36,5 +36,5 @@ export const useOnAppReady = (callback: () => void, deps: any[] = []) => {
     if (fullyReady) {
       callback();
     }
-  }, [fullyReady, ...deps]);
+  }, [fullyReady, callback, ...deps]); // Include callback in dependencies
 };

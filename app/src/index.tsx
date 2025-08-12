@@ -1,8 +1,5 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import {
-  RainbowKitProvider,
-} from '@rainbow-me/rainbowkit';
 import { WagmiProvider } from 'wagmi';
 import {
   QueryClientProvider,
@@ -23,13 +20,11 @@ root.render(
   <React.StrictMode>
     <WagmiProvider config={networkConfig}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider>
           <NotificationProvider>
             <AppContextProvider>
               <App />
             </AppContextProvider>
           </NotificationProvider>
-        </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
   </React.StrictMode>

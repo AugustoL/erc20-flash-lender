@@ -10,7 +10,9 @@ const WETH9ABI = require("@uniswap/v2-periphery/build/WETH9.json");
 async function main() {
     console.log("🏠 Starting ERC20FlashLender DEVELOPMENT deployment...");
     
-    const [deployer, user1, user2, user3] = await hre.ethers.getSigners();
+    const signers = await hre.ethers.getSigners();
+    const [deployer, user1, user2, user3, user4, user5, user6, user7] = signers;
+    const users = [user1, user2, user3, user4, user5, user6, user7];
     const network = hre.network.name;
     
     console.log("📡 Network:", network);
@@ -18,10 +20,11 @@ async function main() {
     console.log("💰 Balance:", hre.ethers.formatEther(await hre.ethers.provider.getBalance(deployer.address)), "ETH");
     
     // Additional test accounts for development
-    console.log("\n👥 Additional test accounts:");
-    console.log("🧑 User1:", user1.address, "Balance:", hre.ethers.formatEther(await hre.ethers.provider.getBalance(user1.address)), "ETH");
-    console.log("🧑 User2:", user2.address, "Balance:", hre.ethers.formatEther(await hre.ethers.provider.getBalance(user2.address)), "ETH");
-    console.log("🧑 User3:", user3.address, "Balance:", hre.ethers.formatEther(await hre.ethers.provider.getBalance(user3.address)), "ETH");
+    console.log("\n👥 Test accounts:");
+    for (let i = 0; i < users.length; i++) {
+        const balance = await hre.ethers.provider.getBalance(users[i].address);
+        console.log(`🧑 User${i + 1}:`, users[i].address, "Balance:", hre.ethers.formatEther(balance), "ETH");
+    }
 
     // Development parameters - lower management fee for testing
     const managementFeePercentage = 0; // 0% of LP fee for dev
@@ -88,13 +91,21 @@ async function main() {
         
         console.log(`  ✅ ${tokenConfig.symbol} deployed to: ${tokenAddress}`);
         
-        // Distribute tokens to test accounts
-        const amount = hre.ethers.parseUnits((Number(tokenConfig.supply) / 10).toString(), tokenConfig.decimals);
-        await token.transfer(user1.address, amount);
-        await token.transfer(user2.address, amount);
-        await token.transfer(user3.address, amount);
+        // Distribute tokens to test accounts with randomness
+        console.log(`  📤 Distributing ${tokenConfig.symbol} to test accounts...`);
+        const baseAmount = Number(tokenConfig.supply) / 20; // Base amount for distribution
         
-        console.log(`    📤 Distributed ${hre.ethers.formatUnits(amount, tokenConfig.decimals)} ${tokenConfig.symbol} to each test account`);
+        for (let i = 0; i < users.length; i++) {
+            // Add randomness: +/- 0-100 of base amount
+            const randomVariation = (Math.random() * 200 - 100); // -100 to +100
+            const finalAmount = Math.max(baseAmount + randomVariation, baseAmount * 0.1); // Minimum 10% of base
+            const tokenAmount = hre.ethers.parseUnits(finalAmount.toFixed(tokenConfig.decimals), tokenConfig.decimals);
+            
+            await token.transfer(users[i].address, tokenAmount);
+            
+            const formattedAmount = hre.ethers.formatUnits(tokenAmount, tokenConfig.decimals);
+            console.log(`    User${i + 1}: ${formattedAmount} ${tokenConfig.symbol}`);
+        }
     }
 
     // Verify deployment
@@ -121,22 +132,107 @@ async function main() {
     // Make some test deposits for development
     console.log("\n💰 Making test deposits for development...");
     
+    // Have multiple users make deposits with varying amounts
     for (const token of deployedTokens) {
         try {
-            // Approve and deposit from user1
-            const depositAmount = hre.ethers.parseUnits("1000", token.decimals);
-            await token.contract.connect(user1).approve(lenderAddress, depositAmount);
+            console.log(`\n  📋 ${token.symbol} deposits:`);
             
-            const depositTx = await lender.connect(user1).deposit(token.address, depositAmount);
-            await depositTx.wait();
+            // Randomly select 3-5 users to make deposits for each token
+            const numDepositors = Math.floor(Math.random() * 3) + 3; // 3-5 users
+            const shuffledUsers = [...users].sort(() => Math.random() - 0.5);
+            const depositors = shuffledUsers.slice(0, numDepositors);
             
-            // Get contract balance using totalLiquidity mapping
-            const balance = await lender.totalLiquidity(token.address);
-            console.log(`  ✅ Deposited ${hre.ethers.formatUnits(depositAmount, token.decimals)} ${token.symbol}`);
-            console.log(`     Contract balance: ${hre.ethers.formatUnits(balance, token.decimals)} ${token.symbol}`);
+            for (let i = 0; i < depositors.length; i++) {
+                const user = depositors[i];
+                
+                // Random deposit amount between 500-2000 tokens
+                const baseDeposit = 500 + Math.random() * 1500;
+                const depositAmount = hre.ethers.parseUnits(baseDeposit.toFixed(token.decimals), token.decimals);
+                
+                // Check user balance first
+                const userBalance = await token.contract.balanceOf(user.address);
+                if (userBalance >= depositAmount) {
+                    await token.contract.connect(user).approve(lenderAddress, depositAmount);
+                    const depositTx = await lender.connect(user).deposit(token.address, depositAmount);
+                    await depositTx.wait();
+                    
+                    const userIndex = users.indexOf(user) + 1;
+                    console.log(`    User${userIndex}: ${hre.ethers.formatUnits(depositAmount, token.decimals)} ${token.symbol}`);
+                } else {
+                    const userIndex = users.indexOf(user) + 1;
+                    console.log(`    User${userIndex}: Insufficient balance for deposit`);
+                }
+            }
+            
+            // Get final contract balance
+            const totalBalance = await lender.totalLiquidity(token.address);
+            console.log(`    💼 Total ${token.symbol} liquidity: ${hre.ethers.formatUnits(totalBalance, token.decimals)}`);
             
         } catch (error) {
-            console.log(`  ⚠️  Could not deposit ${token.symbol}:`, (error as Error).message);
+            console.log(`  ⚠️  Could not process deposits for ${token.symbol}:`, (error as Error).message);
+        }
+    }
+
+    // Setup LP fee voting to create governance activity
+    console.log("\n🗳️  Setting up LP fee voting for realistic governance...");
+    
+    const feeOptions = [1, 25, 50, 100]; // 0.01%, 0.25%, 0.5%, 1%
+    const feeNames = ["0.01%", "0.25%", "0.5%", "1%"];
+    
+    for (const token of deployedTokens) {
+        try {
+            console.log(`\n  📋 ${token.symbol} fee voting:`);
+            
+            // Get users who have deposits in this token
+            const depositors = [];
+            for (let i = 0; i < users.length; i++) {
+                const userShares = await lender.shares(token.address, users[i].address);
+                if (userShares > 0n) {
+                    depositors.push({ user: users[i], index: i + 1 });
+                }
+            }
+            
+            if (depositors.length === 0) {
+                console.log(`    No depositors found for ${token.symbol}`);
+                continue;
+            }
+            
+            // Have each depositor vote for a random fee
+            for (const depositor of depositors) {
+                try {
+                    // Weight voting preferences: 40% for default (25), 60% for others
+                    let selectedFee;
+                    if (Math.random() < 0.4) {
+                        selectedFee = 25; // Default fee
+                    } else {
+                        // Random other fee
+                        const otherFees = feeOptions.filter(f => f !== 25);
+                        selectedFee = otherFees[Math.floor(Math.random() * otherFees.length)];
+                    }
+                    
+                    const voteTx = await lender.connect(depositor.user).voteForLPFee(token.address, selectedFee);
+                    await voteTx.wait();
+                    
+                    const feeIndex = feeOptions.indexOf(selectedFee);
+                    const feeName = feeNames[feeIndex];
+                    console.log(`    User${depositor.index}: Voted for ${selectedFee} bps (${feeName})`);
+                    
+                } catch (error) {
+                    console.log(`    User${depositor.index}: Vote failed -`, (error as Error).message);
+                }
+            }
+            
+            // Display vote tallies
+            console.log(`    📊 Vote tallies for ${token.symbol}:`);
+            for (let i = 0; i < feeOptions.length; i++) {
+                const votes = await lender.lpFeeSharesTotalVotes(token.address, feeOptions[i]);
+                if (votes > 0n) {
+                    console.log(`      ${feeOptions[i]} bps (${feeNames[i]}): ${votes.toString()} shares`);
+                }
+            }
+            
+        } catch (error) {
+            console.log(`  ⚠️  Could not process voting for ${token.symbol}:`, (error as Error).message);
         }
     }
 
@@ -211,16 +307,15 @@ async function main() {
     console.log("\n⚡ Deploying flash loan executors...");
     const ExecutorFactory = await hre.ethers.getContractFactory("ERC20FlashLoanExecutor");
     
-    const executor1 = await ExecutorFactory.deploy(lenderAddress, user1.address) as ERC20FlashLoanExecutor;
-    await executor1.waitForDeployment();
-    const executor1Address = await executor1.getAddress();
-    
-    const executor2 = await ExecutorFactory.deploy(lenderAddress, user2.address) as ERC20FlashLoanExecutor;
-    await executor2.waitForDeployment();
-    const executor2Address = await executor2.getAddress();
-    
-    console.log("✅ User1 Executor deployed to:", executor1Address);
-    console.log("✅ User2 Executor deployed to:", executor2Address);
+    const executors = [];
+    for (let i = 0; i < Math.min(users.length, 3); i++) { // Deploy for first 3 users
+        const executor = await ExecutorFactory.deploy(lenderAddress, users[i].address) as ERC20FlashLoanExecutor;
+        await executor.waitForDeployment();
+        const executorAddress = await executor.getAddress();
+        
+        executors.push({ executor, address: executorAddress, user: users[i], userIndex: i + 1 });
+        console.log(`✅ User${i + 1} Executor deployed to: ${executorAddress}`);
+    }
 
     // Create UniswapV2 pairs and setup liquidity for arbitrage
     console.log("\n💱 Setting up UniswapV2 pairs and liquidity...");
@@ -557,17 +652,27 @@ async function main() {
         }
     }
 
-    // User1 executes 2 profitable operations
-    console.log("\n👤 User1 arbitrage operations:");
-    await executeArbitrage(executor1, user1, hre.ethers.parseEther("100"), 1); // Smaller amount
+    // Execute profitable arbitrage operations with multiple users
+    console.log("\n🎯 Executing profitable arbitrage operations...");
+
+    // User arbitrage operations with different executors
+    if (executors.length > 0) {
+        console.log(`\n👤 User${executors[0].userIndex} arbitrage operations:`);
+        await executeArbitrage(executors[0].executor, executors[0].user, hre.ethers.parseEther("100"), 1);
+        
+        console.log(`\n💼 Operation 2: User${executors[0].userIndex} TUSDC/TDAI arbitrage`);
+        await executeArbitrageUSDCDAI(executors[0].executor, executors[0].user, hre.ethers.parseUnits("1000", 6), 2);
+    }
     
-    // Use TUSDC/TDAI pair for second operation
-    console.log("\n💼 Operation 2: User1 TUSDC/TDAI arbitrage");
-    await executeArbitrageUSDCDAI(executor1, user1, hre.ethers.parseUnits("1000", 6), 2); // 1000 TUSDC
+    if (executors.length > 1) {
+        console.log(`\n👤 User${executors[1].userIndex} arbitrage operations:`);
+        await executeArbitrage(executors[1].executor, executors[1].user, hre.ethers.parseEther("150"), 3);
+    }
     
-    // User2 executes 1 profitable operation  
-    console.log("\n👤 User2 arbitrage operations:");
-    await executeArbitrage(executor2, user2, hre.ethers.parseEther("150"), 3); // Different amount
+    if (executors.length > 2) {
+        console.log(`\n👤 User${executors[2].userIndex} arbitrage operations:`);
+        await executeArbitrageUSDCDAI(executors[2].executor, executors[2].user, hre.ethers.parseUnits("750", 6), 4);
+    }
 
     // Display development environment summary
     console.log("\n🎉 Development environment setup completed!");
@@ -580,8 +685,10 @@ async function main() {
     console.log("🏭 UniswapV2 DEX2 Factory:", factory2Address);
     console.log("🏭 UniswapV2 DEX2 Router:", router2Address);
     console.log("💎 WETH:", wethAddress);
-    console.log("⚡ User1 Executor:", executor1Address);
-    console.log("⚡ User2 Executor:", executor2Address);
+    console.log("⚡ Flash Loan Executors:");
+    executors.forEach((exec, index) => {
+        console.log(`  User${exec.userIndex} Executor: ${exec.address}`);
+    });
     console.log("\n🪙 Test Tokens:");
     deployedTokens.forEach(token => {
         console.log(`  ${token.symbol.padEnd(8)} : ${token.address}`);
@@ -589,9 +696,9 @@ async function main() {
     
     console.log("\n👥 Test Accounts:");
     console.log(`  Deployer : ${deployer.address}`);
-    console.log(`  User1    : ${user1.address}`);
-    console.log(`  User2    : ${user2.address}`);
-    console.log(`  User3    : ${user3.address}`);
+    for (let i = 0; i < users.length; i++) {
+        console.log(`  User${i + 1}    : ${users[i].address}`);
+    }
 
     console.log("\n🧪 Development Testing Commands:");
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -639,15 +746,16 @@ async function main() {
                 router: router2Address
             }
         },
-        executors: {
-            user1: executor1Address,
-            user2: executor2Address
-        },
+        executors: executors.reduce((acc, exec, index) => {
+            acc[`user${exec.userIndex}`] = exec.address;
+            return acc;
+        }, {} as Record<string, string>),
         accounts: {
             deployer: deployer.address,
-            user1: user1.address,
-            user2: user2.address,
-            user3: user3.address
+            ...users.reduce((acc, user, index) => {
+                acc[`user${index + 1}`] = user.address;
+                return acc;
+            }, {} as Record<string, string>)
         },
         network: network,
         managementFee: managementFeePercentage
@@ -664,9 +772,10 @@ main()
         console.log("Management Fee:", result.managementFee / 100, "% of LP fee");
         console.log("Test Tokens:", result.tokens.length);
         console.log("UniswapV2 DEXs: 2 (with arbitrage opportunities)");
-        console.log("Flash Loan Executors: 2 (user1, user2)");
-        console.log("Test Accounts: 4 (deployer + 3 users)");
-        console.log("✅ Arbitrage operations completed successfully!");        
+        console.log("Flash Loan Executors:", Object.keys(result.executors).length);
+        console.log("Test Accounts:", Object.keys(result.accounts).length);
+        console.log("✅ Arbitrage operations completed successfully!");
+        console.log("🗳️ LP fee voting completed with realistic governance activity!");        
         process.exit(0);
     })
     .catch((error) => {

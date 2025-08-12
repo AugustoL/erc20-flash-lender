@@ -1,12 +1,7 @@
 import { createContext, useState, ReactNode, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useWagmiConnection } from '../hooks/useWagmiConnection';
-
-interface IAppContext {
-  appReady: boolean;
-  resourcesLoaded: boolean;
-  isHydrated: boolean;
-}
+import { IAppContext } from '../types';
 
 export const AppContext = createContext<IAppContext>({
   appReady: false,

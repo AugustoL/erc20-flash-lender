@@ -1,18 +1,9 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-
-export interface Notification {
-  id: string;
-  message: string;
-  type: 'success' | 'warning' | 'error';
-  duration?: number; // Auto-dismiss after this many milliseconds (optional)
-}
-
-interface NotificationContextType {
-  notifications: Notification[];
-  addNotification: (message: string, type: Notification['type'], duration?: number) => void;
-  removeNotification: (id: string) => void;
-  clearAllNotifications: () => void;
-}
+import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo } from 'react';
+import {
+  Notification,
+  NotificationContextType,
+  NotificationProviderProps
+} from '../types';
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
@@ -24,14 +15,10 @@ export const useNotifications = () => {
   return context;
 };
 
-interface NotificationProviderProps {
-  children: ReactNode;
-}
-
-export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
+export const NotificationProvider: React.FC<NotificationProviderProps> = React.memo(({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  const addNotification = (message: string, type: Notification['type'], duration = 5000) => {
+  const addNotification = useCallback((message: string, type: Notification['type'], duration = 5000) => {
     const id = Math.random().toString(36).substr(2, 9);
     const notification: Notification = { id, message, type, duration };
     
@@ -43,26 +30,28 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
         removeNotification(id);
       }, duration);
     }
-  };
+  }, []);
 
-  const removeNotification = (id: string) => {
+  const removeNotification = useCallback((id: string) => {
     setNotifications(prev => prev.filter(notification => notification.id !== id));
-  };
+  }, []);
 
-  const clearAllNotifications = () => {
+  const clearAllNotifications = useCallback(() => {
     setNotifications([]);
-  };
+  }, []);
+
+  const value = useMemo(() => ({
+    notifications,
+    addNotification,
+    removeNotification,
+    clearAllNotifications,
+  }), [notifications, addNotification, removeNotification, clearAllNotifications]);
 
   return (
-    <NotificationContext.Provider
-      value={{
-        notifications,
-        addNotification,
-        removeNotification,
-        clearAllNotifications,
-      }}
-    >
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );
-};
+});
+
+NotificationProvider.displayName = 'NotificationProvider';

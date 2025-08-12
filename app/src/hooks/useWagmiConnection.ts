@@ -74,5 +74,5 @@ export const useOnWagmiConnected = (callback: (address: string) => void, deps: a
     if (isFullyConnected && address) {
       callback(address);
     }
-  }, [isFullyConnected, address, ...deps]);
+  }, [isFullyConnected, address, callback, ...deps]); // Include callback in dependencies
 };
