@@ -699,27 +699,63 @@ describe("ERC20FlashLender", function () {
       )).to.be.revertedWith("Arrays length mismatch");
     });
 
-    it("Should reject multi-token flash loan with duplicate tokens", async function () {
-      const { lender, lenderAddress, token, tokenAddress, user1, user2 } = await loadFixture(deployMultiTokenFixture);
+    it("Should allow multi-token flash loan with duplicate tokens", async function () {
+      const { lender, lenderAddress, token, tokenAddress, token2, token2Address, user1, user2 } = await loadFixture(deployMultiTokenFixture);
       
-      // Add liquidity for the token so that duplicate check happens before liquidity check
-      const depositAmount = ethers.parseEther("1000");
+      // Add liquidity for both tokens
+      const depositAmount = ethers.parseEther("5000");
       await approve(token, user1, lenderAddress, depositAmount);
       await deposit(lender, user1, tokenAddress, depositAmount);
       
+      await approve(token2, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, token2Address, depositAmount);
+      
+      const loanAmount1 = ethers.parseEther("1000");
+      const loanAmount1Half = ethers.parseEther("500");
+      const loanAmount2 = ethers.parseEther("500");
+      const loanAmount2Half = ethers.parseEther("250");
+
+      // Deploy and fund receiver
       const MultiReceiver = await ethers.getContractFactory("ValidReceiver");
       const receiver = await MultiReceiver.deploy();
       await receiver.waitForDeployment();
       
-      const tokens = [tokenAddress, tokenAddress]; // Duplicate
-      const amounts = [ethers.parseEther("100"), ethers.parseEther("50")];
+      // Fund receiver with enough for repayment
+      await transfer(token, user2, await receiver.getAddress(), ethers.parseEther("1001"));
+      await transfer(token2, user2, await receiver.getAddress(), ethers.parseEther("501"));
       
-      await expect(lender.connect(user2).flashLoanMultiple(
+      // Record balances before
+      const token1LiquidityBefore = await lender.totalLiquidity(tokenAddress);
+      const token2LiquidityBefore = await lender.totalLiquidity(token2Address);
+      const token1MgmtFeesBefore = await lender.collectedManagementFees(tokenAddress);
+      const token2MgmtFeesBefore = await lender.collectedManagementFees(token2Address);
+      
+      const tokens = [tokenAddress, tokenAddress, token2Address, token2Address];
+      const amounts = [loanAmount1Half, loanAmount1Half, loanAmount2Half, loanAmount2Half];
+      
+      await lender.connect(user2).flashLoanMultiple(
         tokens,
         amounts,
         await receiver.getAddress(),
         "0x"
-      )).to.be.revertedWith("Duplicate token");
+      );
+      
+      // Verify fees were collected for both tokens
+      const token1LiquidityAfter = await lender.totalLiquidity(tokenAddress);
+      const token2LiquidityAfter = await lender.totalLiquidity(token2Address);
+      const token1MgmtFeesAfter = await lender.collectedManagementFees(tokenAddress);
+      const token2MgmtFeesAfter = await lender.collectedManagementFees(token2Address);
+      
+      // Calculate expected fees
+      const token1LpFee = (loanAmount1 * 1n) / 10000n; // 1 bps
+      const token2LpFee = (loanAmount2 * 1n) / 10000n; // 1 bps
+      const token1MgmtFee = (loanAmount1 * 1n * 0n) / 100000000n; // 0% of LP fee
+      const token2MgmtFee = (loanAmount2 * 1n * 0n) / 100000000n; // 0% of LP fee
+      
+      expect(token1LiquidityAfter - token1LiquidityBefore).to.equal(token1LpFee);
+      expect(token2LiquidityAfter - token2LiquidityBefore).to.equal(token2LpFee);
+      expect(token1MgmtFeesAfter - token1MgmtFeesBefore).to.equal(token1MgmtFee);
+      expect(token2MgmtFeesAfter - token2MgmtFeesBefore).to.equal(token2MgmtFee);
     });
 
     it("Should reject multi-token flash loan with too many tokens", async function () {

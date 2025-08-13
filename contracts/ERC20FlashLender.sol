@@ -658,11 +658,6 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
             require(amount > 0, "Invalid amount");
             require(amount <= totalLiquidity[token], "Not enough liquidity");
             
-            // Check for duplicate tokens
-            for (uint256 j = i + 1; j < tokens.length; j++) {
-                require(tokens[i] != tokens[j], "Duplicate token");
-            }
-            
             // Calculate fees for this token
             uint256 currentLpFee = lpFeesBps[token] == 0 ? DEFAULT_LP_FEE_BPS : lpFeesBps[token];
             
