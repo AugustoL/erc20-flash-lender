@@ -562,7 +562,7 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         require(amount <= totalLiquidity[token], "Not enough liquidity");
         
         // Verify receiver implements the required interface
-        require(_supportsInterface(receiver), "Invalid receiver interface");
+        require(_supportsExecuteOperationInterface(receiver), "Invalid receiver interface");
 
         // Calculate fees: LP fee goes to liquidity providers, management fee is % of LP fee
         // Use default LP fee if none set for this token
@@ -642,7 +642,7 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         require(tokens.length <= 20, "Too many tokens"); // Prevent gas limit issues
         
         // Verify receiver implements the required interface
-        require(_supportsMultiInterface(receiver), "Invalid receiver interface");
+        require(_supportsExecuteMultiInterface(receiver), "Invalid receiver interface");
         
         // Arrays to store calculated fees and repayment amounts
         uint256[] memory totalFees = new uint256[](tokens.length);
@@ -807,48 +807,29 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
      * @notice Check if a contract implements the IFlashLoanReceiver interface
      * @param receiver Address of the potential flash loan receiver
      * @return bool True if receiver supports the required interface
-     * @dev Uses ERC165 standard first, falls back to function existence check
-     *      This prevents flash loans to contracts that can't handle them properly
+     * @dev Uses ERC165 standard only. No fallback call to executeOperation.
      */
-    function _supportsInterface(address receiver) private returns (bool) {
-        // Calculate interface ID manually for better compatibility
+    function _supportsExecuteOperationInterface(address receiver) private view returns (bool) {
         bytes4 interfaceId = bytes4(keccak256("executeOperation(address,uint256,uint256,bytes)"));
-        try IERC165(receiver).supportsInterface(interfaceId) returns (bool supported) {
+        try IERC165(receiver).supportsInterface{gas: 30000}(interfaceId) returns (bool supported) {
             return supported;
         } catch {
-            // Fallback: test if the contract has executeOperation function
-            // Use EIP-165 compliant gas limit of 30,000 gas to prevent gas starvation attacks
-            try IFlashLoanReceiver(receiver).executeOperation{gas: 30000}(address(0), 0, 0, "") {
-                return true; 
-            } catch {
-                return false;
-            }
+            return false;
         }
     }
-    
+
     /**
      * @notice Check if a contract implements the IMultiFlashLoanReceiver interface
      * @param receiver Address of the potential multi flash loan receiver
      * @return bool True if receiver supports the required interface
-     * @dev Uses ERC165 standard first, falls back to function existence check
-     *      This prevents flash loans to contracts that can't handle them properly
+     * @dev Uses ERC165 standard only. No fallback call to executeMultiOperation.
      */
-    function _supportsMultiInterface(address receiver) private returns (bool) {
-        // Calculate interface ID manually for better compatibility
+    function _supportsExecuteMultiInterface(address receiver) private view returns (bool) {
         bytes4 interfaceId = bytes4(keccak256("executeMultiOperation(address[],uint256[],uint256[],bytes)"));
-        try IERC165(receiver).supportsInterface(interfaceId) returns (bool supported) {
+        try IERC165(receiver).supportsInterface{gas: 30000}(interfaceId) returns (bool supported) {
             return supported;
         } catch {
-            // Fallback: test if the contract has executeMultiOperation function
-            // Use EIP-165 compliant gas limit of 30,000 gas to prevent gas starvation attacks
-            address[] memory emptyTokens = new address[](0);
-            uint256[] memory emptyAmounts = new uint256[](0);
-            uint256[] memory emptyOwed = new uint256[](0);
-            try IMultiFlashLoanReceiver(receiver).executeMultiOperation{gas: 30000}(emptyTokens, emptyAmounts, emptyOwed, "") {
-                return true; 
-            } catch {
-                return false;
-            }
+            return false;
         }
     }
 }

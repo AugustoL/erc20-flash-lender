@@ -636,7 +636,7 @@ describe("ERC20FlashLender", function () {
       const loanAmount2 = ethers.parseEther("50");
       
       // Deploy multi flash loan receiver
-      const MultiReceiver = await ethers.getContractFactory("ValidMultiReceiver");
+      const MultiReceiver = await ethers.getContractFactory("ValidReceiver");
       const receiver = await MultiReceiver.deploy();
       await receiver.waitForDeployment();
       
@@ -666,7 +666,7 @@ describe("ERC20FlashLender", function () {
       const loanAmount1 = ethers.parseEther("50");
       const loanAmount2 = ethers.parseEther("50"); // No liquidity for this token
       
-      const MultiReceiver = await ethers.getContractFactory("ValidMultiReceiver");
+      const MultiReceiver = await ethers.getContractFactory("ValidReceiver");
       const receiver = await MultiReceiver.deploy();
       await receiver.waitForDeployment();
       
@@ -684,7 +684,7 @@ describe("ERC20FlashLender", function () {
     it("Should reject multi-token flash loan with mismatched array lengths", async function () {
       const { lender, tokenAddress, token2Address, user2 } = await loadFixture(deployMultiTokenFixture);
       
-      const MultiReceiver = await ethers.getContractFactory("ValidMultiReceiver");
+      const MultiReceiver = await ethers.getContractFactory("ValidReceiver");
       const receiver = await MultiReceiver.deploy();
       await receiver.waitForDeployment();
       
@@ -707,7 +707,7 @@ describe("ERC20FlashLender", function () {
       await approve(token, user1, lenderAddress, depositAmount);
       await deposit(lender, user1, tokenAddress, depositAmount);
       
-      const MultiReceiver = await ethers.getContractFactory("ValidMultiReceiver");
+      const MultiReceiver = await ethers.getContractFactory("ValidReceiver");
       const receiver = await MultiReceiver.deploy();
       await receiver.waitForDeployment();
       
@@ -725,7 +725,7 @@ describe("ERC20FlashLender", function () {
     it("Should reject multi-token flash loan with too many tokens", async function () {
       const { lender, tokenAddress, user2 } = await loadFixture(deployMultiTokenFixture);
       
-      const MultiReceiver = await ethers.getContractFactory("ValidMultiReceiver");
+      const MultiReceiver = await ethers.getContractFactory("ValidReceiver");
       const receiver = await MultiReceiver.deploy();
       await receiver.waitForDeployment();
       
@@ -756,7 +756,7 @@ describe("ERC20FlashLender", function () {
       const loanAmount2 = ethers.parseEther("500");
       
       // Deploy and fund receiver
-      const MultiReceiver = await ethers.getContractFactory("ValidMultiReceiver");
+      const MultiReceiver = await ethers.getContractFactory("ValidReceiver");
       const receiver = await MultiReceiver.deploy();
       await receiver.waitForDeployment();
       
@@ -813,7 +813,7 @@ describe("ERC20FlashLender", function () {
       const loanAmount2 = ethers.parseEther("50");
       
       // Deploy receiver but don't fund it enough for second token
-      const MultiReceiver = await ethers.getContractFactory("ValidMultiReceiver");
+      const MultiReceiver = await ethers.getContractFactory("ValidReceiver");
       const receiver = await MultiReceiver.deploy();
       await receiver.waitForDeployment();
       

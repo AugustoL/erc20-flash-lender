@@ -586,9 +586,11 @@ describe("ERC20FlashLoanExecutor", function () {
       const executor = await ethers.getContractAt("ERC20FlashLoanExecutor", executorAddress);
       
       // ERC165 interface ID
-      const erc165InterfaceId = "0x01ffc9a7";
-      
-      expect(await executor.supportsInterface(erc165InterfaceId)).to.be.true;
+      const ifaceId = ethers.keccak256(
+        ethers.toUtf8Bytes("executeOperation(address,uint256,uint256,bytes)")
+      ).slice(0, 10); // bytes4
+
+      expect(await executor.supportsInterface(ifaceId)).to.be.true;
     });
 
     it("Should not support invalid interface", async function () {

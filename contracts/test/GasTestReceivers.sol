@@ -18,7 +18,7 @@ contract GasExhaustingReceiver is IFlashLoanReceiver {
         uint256 amount,
         uint256 totalOwed,
         bytes calldata
-    ) external returns (bool) {
+    ) external override returns (bool) {
         if (_token == address(0) && amount == 0 && totalOwed == 0) {
             // Each iteration writes to a new storage slot => ~20k gas per iteration
             // 2 iterations already exceed 30k allowance (40k+ including loop overhead)
