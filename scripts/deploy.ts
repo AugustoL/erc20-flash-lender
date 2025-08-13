@@ -35,7 +35,7 @@ async function main() {
     // Initialize the contract
     console.log("\\n🔧 Initializing contract...");
     try {
-        const initTx = await lender.initialize(managementFeePercentage);
+        const initTx = await lender.initialize(deployer);
         await initTx.wait();
         console.log("✅ Contract initialized");
     } catch (error) {
