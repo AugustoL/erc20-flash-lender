@@ -29,7 +29,7 @@ describe("ERC20FlashLoanExecutor", function () {
     const ERC20FlashLender = await ethers.getContractFactory("ERC20FlashLender");
     const lender = await ERC20FlashLender.deploy();
     await lender.waitForDeployment();
-    await lender.initialize(100); // 1% management fee
+    await lender.initialize(owner.address); // Only owner, management fee defaults to 0
 
     // Deploy the factory
     const ERC20FlashLoanExecutorFactory = await ethers.getContractFactory("ERC20FlashLoanExecutorFactory");
@@ -954,6 +954,8 @@ describe("ERC20FlashLoanExecutor", function () {
     it("Should properly handle fees for multi-token flash loans", async function () {
       const { factory, lender, token, token2, simpleTarget, user1, owner } = await loadFixture(deployMultiTokenFixture);
       
+      await lender.setManagementFee(100); // 1% management fee
+
       const loanAmount1 = ethers.parseEther("1000");
       const loanAmount2 = ethers.parseEther("500");
       

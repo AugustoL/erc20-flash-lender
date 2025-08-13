@@ -188,14 +188,12 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     
     /**
      * @notice Initializes the contract (replaces constructor for upgradeable contracts)
-     * @param _mgmtFeePercentage Management fee as percentage of LP fee (0 = 0%, default is 0%)
+     * @param _owner Address of the contract owner
      * @dev Can only be called once. Sets up OpenZeppelin components and initial fee
      */
-    function initialize(uint256 _mgmtFeePercentage) public initializer {
-        require(_mgmtFeePercentage <= MAX_MANAGEMENT_FEE_PERCENTAGE, "Mgmt fee out of range");
-        __Ownable_init(msg.sender);
+    function initialize(address _owner) public initializer {
+        __Ownable_init(_owner);
         __ReentrancyGuard_init();
-        managementFeePercentage = _mgmtFeePercentage;
     }
 
     // ===================== OWNER FUNCTIONS =====================

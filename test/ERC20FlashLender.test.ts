@@ -29,7 +29,7 @@ describe("ERC20FlashLender", function () {
     const [owner, user1, user2, user3] = await ethers.getSigners();
 
     // Deploy mock ERC20 token from ERC20FlashLenderTests.sol
-    const MockERC20 = await ethers.getContractFactory("MockERC20",);
+    const MockERC20 = await ethers.getContractFactory("MockERC20");
     const initialSupply = ethers.parseEther("1000000"); // 1 million tokens
     const token = await MockERC20.deploy(initialSupply, "TestToken", "TTK", 18);
     await token.waitForDeployment();
@@ -39,8 +39,8 @@ describe("ERC20FlashLender", function () {
     const lender = await ERC20FlashLender.deploy();
     await lender.waitForDeployment();
 
-    // Initialize with 0% management fee (default for early liquidity incentives)
-    await lender.initialize(0);
+    // Initialize with owner only (management fee defaults to 0)
+    await lender.initialize(owner.address);
 
     // Setup token balances
     const initialBalance = ethers.parseEther("10000");
@@ -63,18 +63,13 @@ describe("ERC20FlashLender", function () {
       expect(await lender.MINIMUM_DEPOSIT()).to.equal(100000000); // 1e8
     });
 
-    it("Should reject initialization with excessive management fee", async function () {
+    it("Should set owner correctly on initialization", async function () {
+      const [owner, user1] = await ethers.getSigners();
       const ERC20FlashLender = await ethers.getContractFactory("ERC20FlashLender");
       const lender = await ERC20FlashLender.deploy();
-      
-      await expect(lender.initialize(600)).to.be.revertedWith("Mgmt fee out of range"); // > 5%
-    });
-
-    it("Should allow initialization with 0% management fee", async function () {
-      const ERC20FlashLender = await ethers.getContractFactory("ERC20FlashLender");
-      const lender = await ERC20FlashLender.deploy();
-      
-      await expect(lender.initialize(0)).to.not.be.reverted; // 0% is now allowed
+      await lender.waitForDeployment();
+      await lender.initialize(user1.address);
+      expect(await lender.owner()).to.equal(user1.address);
       expect(await lender.managementFeePercentage()).to.equal(0);
     });
   });

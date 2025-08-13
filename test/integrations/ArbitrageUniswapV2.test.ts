@@ -41,7 +41,7 @@ describe("Arbitrage Integration Test - Uniswap V2", function () {
     // Deploy flash lender
     const FlashLender = await ethers.getContractFactory("ERC20FlashLender");
     flashLender = await FlashLender.deploy();
-    await flashLender.initialize(0); // 0% management fee
+    await flashLender.initialize(owner.address); // Only owner, management fee defaults to 0
 
     // Deploy executor
     const Executor = await ethers.getContractFactory("ERC20FlashLoanExecutor");
