@@ -367,8 +367,8 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
             // User gets shares for net amount, owner gets virtual shares
             newShares = netAmount;
             
-            // Mint virtual shares to owner (contract owner)
-            shares[token][owner()] = VIRTUAL_SHARES;
+            // Mint virtual shares to address(0) to prevent manipulation
+            shares[token][address(0)] = VIRTUAL_SHARES;
             totalShares[token] = VIRTUAL_SHARES;
             
             // Add virtual liquidity equivalent (no actual tokens, just accounting)

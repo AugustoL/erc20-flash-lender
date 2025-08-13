@@ -94,9 +94,9 @@ describe("ERC20FlashLender", function () {
       expect(await lender.deposits(tokenAddress, user1.address)).to.equal(netDeposit);
       expect(await lender.shares(tokenAddress, user1.address)).to.equal(netDeposit);
       
-      // Owner gets virtual shares
-      expect(await lender.shares(tokenAddress, await lender.owner())).to.equal(virtualShares);
-      
+      // Address(0) gets virtual shares
+      expect(await lender.shares(tokenAddress, "0x0000000000000000000000000000000000000000")).to.equal(virtualShares);
+
       // Total includes virtual shares + user shares
       expect(await lender.totalShares(tokenAddress)).to.equal(virtualShares + netDeposit);
       
