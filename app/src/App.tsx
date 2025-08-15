@@ -11,6 +11,7 @@ import Loading from './components/common/Loading';
 import {
   LazyConnectWallet,
   LazyDashboard,
+  LazyWallet,
   LazyActivity,
   LazyPool,
   LazySettings,
@@ -57,6 +58,7 @@ function AppContent() {
               <NotificationDisplay />
               <Routes>
                 <Route path="/" element={<LazyDashboard />} />
+                <Route path="/wallet/:userAddress" element={<LazyWallet />} />
                 <Route path="/activity/:userAddress" element={<LazyActivity />} />
                 <Route path="/pool/:tokenAddress" element={<LazyPool />} />
                 <Route path="/settings" element={<LazySettings />} />

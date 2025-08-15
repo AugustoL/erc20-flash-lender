@@ -132,7 +132,7 @@ export default function Pool() {
 
     // Find pool data for this specific token
     if (pools && pools.length > 0) {
-      const pool = pools.find(p => p.address.toLowerCase() === tokenAddress.toLowerCase());
+      const pool = pools.find(p => p?.address?.toLowerCase() === tokenAddress?.toLowerCase());
       if (pool) {
         console.log('Found pool:', pool);
         setPoolData(pool);
@@ -150,7 +150,7 @@ export default function Pool() {
     // Find user position for this specific token
     if (isConnected) {
       if (userPositions && userPositions.length > 0) {
-        const position = userPositions.find(p => p.token.toLowerCase() === tokenAddress.toLowerCase());
+        const position = userPositions.find(p => p?.token?.address?.toLowerCase() === tokenAddress?.toLowerCase());
         console.log('Found user position:', position);
         setUserPosition(position || null);
       } else {

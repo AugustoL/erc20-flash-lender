@@ -15,7 +15,7 @@ export const useDashboardRows = (pools: PoolData[] = [], userPositions: UserPosi
     return pools.map(pool => {
       // Use a more stable check for user positions to avoid unnecessary recalculations
       const userPosition = userPositions?.find(pos => 
-        pos.token.toLowerCase() === pool.address.toLowerCase()
+        pos?.token?.address?.toLowerCase() === pool?.address?.toLowerCase()
       );
       
       const hasWithdrawableAmount = userPosition?.withdrawable?.netAmount && 
@@ -63,7 +63,7 @@ export const useAvailableBalance = (
 
     if (currentAction === 'withdraw') {
       const userPosition = userPositions?.find(
-        pos => pos.token.toLowerCase() === selectedToken.toLowerCase()
+        pos => pos?.token?.address?.toLowerCase() === selectedToken?.toLowerCase()
       );
       
       if (userPosition?.withdrawable?.netAmount) {
@@ -96,7 +96,7 @@ export const useAvailableFees = (
     if (!selectedToken || !pools.length) return '0';
 
     const userPosition = userPositions?.find(
-      pos => pos.token.toLowerCase() === selectedToken.toLowerCase()
+      pos => pos?.token?.address?.toLowerCase() === selectedToken?.toLowerCase()
     );
     
     if (userPosition?.withdrawable?.fees) {

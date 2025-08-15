@@ -4,18 +4,25 @@ import React from 'react';
 // ==================== CORE DOMAIN TYPES ====================
 
 /**
+ * Core token interface used across the application
+ */
+export interface Token {
+  address: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  logoUrl?: string; // Optional URL for token logo
+}
+
+/**
  * Raw token pool data from blockchain
  */
-export interface TokenPoolData {
-  address: string;
+export interface TokenPoolData extends Token {
   totalLiquidity: bigint;
   totalShares: bigint;
   lpFee: number; // in basis points
   managementFee: bigint;
   apy?: number; // Annual Percentage Yield calculated from recent activity
-  symbol?: string;
-  decimals?: number;
-  name?: string;
   // User-specific data when userAddress is provided
   userBalance?: bigint;
   userAllowance?: bigint;
@@ -24,8 +31,7 @@ export interface TokenPoolData {
 /**
  * Raw user position data from blockchain
  */
-export interface UserPositionData {
-  token: string;
+export interface UserPositionData extends Token {
   deposits: bigint;
   shares: bigint;
   withdrawable: {
@@ -61,7 +67,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
  * Fee proposal data
  */
 export interface ProposalData {
-  token: string;
+  pool: string;
   feeAmount: number;
   executionBlock: bigint;
   currentBlock: bigint;
@@ -73,15 +79,11 @@ export interface ProposalData {
 /**
  * Formatted pool data for UI consumption
  */
-export interface PoolData {
-  address: string;
+export interface PoolData extends Token {
   totalLiquidity: string;
   totalShares: string;
   lpFee: number;
   managementFee: string;
-  symbol?: string;
-  decimals?: number;
-  name?: string;
   apy?: number;
   formattedLiquidity?: string;
   // User-specific data when user is connected
@@ -95,7 +97,7 @@ export interface PoolData {
  * Formatted user position for UI consumption
  */
 export interface UserPosition {
-  token: string;
+  token: Token;
   deposits: string;
   shares: string;
   withdrawable: {
@@ -117,29 +119,13 @@ export interface UserPosition {
 }
 
 /**
- * Flash loan quote information
- */
-export interface FlashLoanQuote {
-  token: string;
-  amount: string;
-  fee: string;
-  totalRepayment: string;
-  available: boolean;
-  formattedFee?: string;
-}
-
-/**
  * Dashboard table row data
  */
-export interface TokenPoolRow {
-  address: string;
-  symbol: string;
-  name: string;
+export interface TokenPoolRow extends Token {
   tvl: string;
   loans: number; // placeholder until on-chain stat exists
   volume: string; // placeholder
   lpFeeBps: string;
-  decimals: number;
   apy?: number;
   hasUserDeposits?: boolean;
   // Status information

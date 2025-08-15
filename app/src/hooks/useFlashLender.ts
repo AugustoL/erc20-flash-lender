@@ -4,12 +4,10 @@ import { useAccount } from 'wagmi';
 import { FlashLenderDataService } from '../services/FlashLenderDataService';
 import { useSettings } from '../context/SettingsContext';
 import { getERC20FlashLenderAddress } from '../config';
-import ERC20FlashLenderABI from '../contracts/ERC20FlashLender.json';
 import {
   UseFlashLenderConfig,
   PoolData,
   UserPosition,
-  FlashLoanQuote
 } from '../types';
 
 export function useFlashLender({

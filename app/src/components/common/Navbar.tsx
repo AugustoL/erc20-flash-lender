@@ -17,6 +17,13 @@ const Navbar = () => {
           <li><Link to="/">DASHBOARD</Link></li>
           <li>
             {address ? (
+              <Link to={`/wallet/${address}`}>WALLET</Link>
+            ) : (
+              <span className="navbar-activity-disabled">WALLET</span>
+            )}
+          </li>
+          <li>
+            {address ? (
               <Link to={`/activity/${address}`}>ACTIVITY</Link>
             ) : (
               <span className="navbar-activity-disabled">ACTIVITY</span>
