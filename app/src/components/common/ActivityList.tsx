@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserAction, PoolData } from '../../types';
-import { useActionStyles, useTimestampFormatter, useTokenFormatter } from '../../hooks/usePoolData';
+import { useActionStyles, useTimestampFormatter, useTokenFormatter } from '../../hooks/useActivityData';
 
 interface ActivityListProps {
   actions: UserAction[];

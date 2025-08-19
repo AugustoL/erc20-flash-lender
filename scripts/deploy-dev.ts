@@ -2,6 +2,7 @@ import hre from "hardhat";
 import { ERC20FlashLender, MockERC20, ERC20FlashLoanExecutor } from "../typechain-types";
 import * as fs from "fs";
 import * as path from "path";
+import { deployMulticall3 } from "./deploy-multicall-hardhat";
 
 // Import actual Uniswap V2 contract ABIs
 const UniswapV2FactoryABI = require("@uniswap/v2-core/build/UniswapV2Factory.json");
@@ -100,7 +101,9 @@ function updateDevConfig(deployedContracts: { [key: string]: string }) {
 
 async function main() {
     console.log("🏠 Starting ERC20FlashLender DEVELOPMENT deployment...");
-    
+
+    await deployMulticall3();
+
     // Read production config for reference
     console.log("📖 Reading production configuration...");
     try {

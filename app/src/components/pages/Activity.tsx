@@ -41,7 +41,6 @@ export default function Activity() {
       setError(null);
       
       try {
-        console.log(`Fetching actions for user: ${userAddress}`);
         
         // Get all deposited tokens first to fetch actions for each
         const allPools = await service.getAllTokenPools();
@@ -76,7 +75,6 @@ export default function Activity() {
 
         setActions(allActions);
         setTokenMetadata(metadata);
-        console.log(`Fetched ${allActions.length} actions for user`);
       } catch (err) {
         console.error('Error fetching user actions:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch user actions');

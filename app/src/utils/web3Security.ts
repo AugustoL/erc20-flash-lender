@@ -114,7 +114,6 @@ export async function createSecureSigner(): Promise<ethers.Signer> {
 
   try {
     // Force MetaMask provider instead of using local RPC
-    console.log('🔐 Creating secure signer with MetaMask');
     
     // Request account access if needed
     const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });

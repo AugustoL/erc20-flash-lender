@@ -14,7 +14,7 @@ const Navbar = () => {
     <nav className="navbar">
       <div className="navbar-inner">
         <ul>
-          <li><Link to="/">DASHBOARD</Link></li>
+          <li><Link to="/">TOKENS</Link></li>
           <li>
             {address ? (
               <Link to={`/wallet/${address}`}>WALLET</Link>

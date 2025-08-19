@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-import '../../styles/styles.css';
-import { ActionType, WithdrawType, ActionModalProps } from '../../types';
+import '../../../styles/styles.css';
+import { ActionType, WithdrawType, ActionModalProps } from '../../../types';
 
 // Re-export types for backward compatibility
 export type { ActionType, WithdrawType };
@@ -15,12 +15,14 @@ const ActionModal: React.FC<ActionModalProps> = ({
   availableBalance = '0',
   availableFees = '0',
   currentVoteFee = 0,
+  feeGovernance = [],
   onConfirm,
   isLoading = false
 }) => {
   const [amount, setAmount] = useState('');
   const [feePercentage, setFeePercentage] = useState(currentVoteFee.toString());
   const [withdrawType, setWithdrawType] = useState<WithdrawType>('all');
+  const [showDropdown, setShowDropdown] = useState(false);
   const [error, setError] = useState('');
 
   // Reset form when modal opens/closes or action changes
@@ -35,9 +37,27 @@ const ActionModal: React.FC<ActionModalProps> = ({
         setAmount('');
       }
       setFeePercentage(currentVoteFee.toString());
+      setShowDropdown(false);
       setError('');
     }
   }, [isOpen, action, currentVoteFee, availableBalance, availableFees]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showDropdown && !(event.target as Element)?.closest('.fee-input-container')) {
+        setShowDropdown(false);
+      }
+    };
+
+    if (showDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+    // Explicitly return undefined if not showing dropdown
+    return undefined;
+  }, [showDropdown]);
+
 
   if (!isOpen) return null;
 
@@ -199,12 +219,24 @@ const ActionModal: React.FC<ActionModalProps> = ({
   const handleFeeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setFeePercentage(value);
+    setShowDropdown(false); // Close dropdown when user starts typing
     
     if (value) {
       validateFeePercentage(value);
     } else {
       setError('');
     }
+  };
+
+  const toggleDropdown = () => {
+    setShowDropdown(!showDropdown);
+  };
+
+  const handleFeeSelect = (selectedFee: number) => {
+    const feePercentageValue = (selectedFee / 100).toFixed(2);
+    setFeePercentage(feePercentageValue);
+    setShowDropdown(false);
+    setError('');
   };
 
   const handleConfirm = () => {
@@ -347,19 +379,83 @@ const ActionModal: React.FC<ActionModalProps> = ({
               <label className="form-label">
                 Fee Percentage (%)
               </label>
-              <input
-                type="number"
-                className="form-input"
-                placeholder="0.00"
-                value={feePercentage}
-                onChange={handleFeeChange}
-                disabled={isLoading}
-                step="0.01"
-                min="0"
-                max="5"
-              />
+              <div className="fee-input-container">
+                <div className="input-group">
+                  <input
+                    type="number"
+                    className={`form-input ${action === 'vote' ? 'with-dropdown' : ''}`}
+                    placeholder="0.00"
+                    value={feePercentage}
+                    onChange={handleFeeChange}
+                    disabled={isLoading}
+                    step="0.01"
+                    min="0"
+                    max="5"
+                  />
+                  {action === 'vote' && (
+                    <button
+                      type="button"
+                      className="dropdown-toggle"
+                      onClick={toggleDropdown}
+                      disabled={isLoading}
+                      title={feeGovernance.length > 0 ? "Select from existing voted fees" : "No fee options available"}
+                    >
+                      <svg 
+                        width="16" 
+                        height="16" 
+                        viewBox="0 0 16 16" 
+                        fill="none"
+                        className={showDropdown ? 'token-dropdown-arrow-rotated' : 'token-dropdown-arrow'}
+                      >
+                        <path 
+                          d="M4 6L8 10L12 6" 
+                          stroke="currentColor" 
+                          strokeWidth="2" 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                {showDropdown && (
+                  <div className="dropdown-menu">
+                    {feeGovernance.length > 0 ? (
+                      feeGovernance.map(fee => (
+                        <button
+                          key={fee.fee}
+                          type="button"
+                          className={`dropdown-item ${fee.isActive ? 'active' : ''}`}
+                          onClick={() => handleFeeSelect(fee.fee)}
+                          disabled={isLoading}
+                        >
+                          <div className="fee-option">
+                            <div className="fee-percentage">
+                              <strong>{(fee.fee / 100).toFixed(2)}%</strong>
+                              {fee.isActive && <span className="active-indicator">• Active</span>}
+                            </div>
+                            <div className="fee-votes">
+                              {fee.percentage.toFixed(1)}% votes
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="dropdown-item disabled">
+                        <div className="fee-option">
+                          <div className="fee-percentage">No fee options available</div>
+                          <div className="fee-votes">Debug: {JSON.stringify(feeGovernance)}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               <div className="form-help">
-                Enter a value between 0.00% and 5.00%. Your vote weight is proportional to your shares.
+                {feeGovernance.length > 0 
+                  ? 'Select from existing voted fees or enter a custom value between 0.00% and 5.00%. Your vote weight is proportional to your shares.'
+                  : 'Enter a value between 0.00% and 5.00%. Your vote weight is proportional to your shares.'
+                }
               </div>
               {error && <div className="form-error">{error}</div>}
             </div>

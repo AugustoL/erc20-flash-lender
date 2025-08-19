@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { useAccount } from 'wagmi';
-import { useDebouncedTokenInfo } from '../../hooks/useTokenInfo';
-import { getERC20FlashLenderAddress } from '../../config';
-import '../../styles/styles.css';
+import { useDebouncedTokenInfo } from '../../../hooks/useTokenInfo';
+import { getERC20FlashLenderAddress } from '../../../config';
+import '../../../styles/styles.css';
 
 interface TokenOption {
   address: string;
@@ -21,6 +21,7 @@ interface NewTokenDepositModalProps {
   provider?: ethers.Provider;
   userAddress?: string;
   existingTokens?: TokenOption[];
+  selectedTokenAddress?: string;
 }
 
 const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
@@ -31,7 +32,8 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
   isLoading = false,
   provider,
   userAddress,
-  existingTokens = []
+  existingTokens = [],
+  selectedTokenAddress = ''
 }) => {
   // Get chain ID and lender address
   const { chainId } = useAccount();
@@ -47,17 +49,17 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
   const { tokenInfo, isLoading: isValidatingToken, error: tokenError, validateToken, clearToken } = 
     useDebouncedTokenInfo(provider, 500);
 
-  // Reset form when modal opens/closes
+  // Reset form when modal opens/closes and set selected token address
   useEffect(() => {
     if (isOpen) {
-      setTokenAddress('');
+      setTokenAddress(selectedTokenAddress);
       setAmount('');
       setError('');
       setAllowance(BigInt(0));
       setShowDropdown(false);
       clearToken();
     }
-  }, [isOpen, clearToken]);
+  }, [isOpen, selectedTokenAddress, clearToken]);
 
   // Close dropdown when clicking outside
   useEffect(() => {

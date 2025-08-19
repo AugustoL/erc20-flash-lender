@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react';
 import Loading from './common/Loading';
 
 // Lazy load page components
-const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Tokens = lazy(() => import('./pages/Tokens'));
 const Wallet = lazy(() => import('./pages/Wallet'));
 const Activity = lazy(() => import('./pages/Activity'));
 const Pool = lazy(() => import('./pages/Pool'));
@@ -23,7 +23,7 @@ export const withSuspense = (Component: React.ComponentType<any>) => {
 };
 
 // Export lazy components wrapped with Suspense
-export const LazyDashboard = withSuspense(Dashboard);
+export const LazyTokens = withSuspense(Tokens);
 export const LazyWallet = withSuspense(Wallet);
 export const LazyActivity = withSuspense(Activity);
 export const LazyPool = withSuspense(Pool);
@@ -34,7 +34,7 @@ export const LazyConnectWallet = withSuspense(ConnectWallet);
 
 // Default exports for backward compatibility
 export {
-  Dashboard,
+  Tokens,
   Wallet,
   Activity,
   Pool,

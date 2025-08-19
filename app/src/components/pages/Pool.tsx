@@ -4,16 +4,18 @@ import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import { ethers } from 'ethers';
 import { useFlashLender } from '../../hooks/useFlashLender';
 import { FlashLenderDataService } from '../../services/FlashLenderDataService';
-import ActionModal, { ActionType } from '../common/ActionModal';
+import ActionModal, { ActionType } from '../common/modal/ActionModal';
 import ActivityList from '../common/ActivityList';
 import { useNotifications } from '../../context/NotificationContext';
+import { analyzeUserActions, isActionAllowed } from '../../utils/userActions';
 import {
   PoolData,
-  UserPosition,
+  UserPositionData,
   UserAction,
   PoolStatistics,
   FeeVote
 } from '../../types';
+import { useTokens } from '../../context/TokensContext';
 
 export default function Pool() {
   const { tokenAddress } = useParams<{ tokenAddress: string }>();
@@ -21,7 +23,7 @@ export default function Pool() {
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
   const [poolData, setPoolData] = useState<PoolData | null>(null);
-  const [userPosition, setUserPosition] = useState<UserPosition | null>(null);
+  const [userPosition, setUserPosition] = useState<UserPositionData | null>(null);
   const [userActions, setUserActions] = useState<UserAction[]>([]);
   const [poolActions, setPoolActions] = useState<UserAction[]>([]);
   const [poolStatistics, setPoolStatistics] = useState<PoolStatistics | null>(null);
@@ -33,16 +35,19 @@ export default function Pool() {
   const [proposalStatus, setProposalStatus] = useState<{ exists: boolean; canExecute: boolean; blocksRemaining: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'user' | 'pool' | 'stats'>('user');
+  const [userBalance, setUserBalance] = useState<bigint | null>(null);
+  const [userAllowance, setUserAllowance] = useState<bigint | null>(null);
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentAction, setCurrentAction] = useState<ActionType>('deposit');
   const [isTransactionLoading, setIsTransactionLoading] = useState(false);
-  const [walletBalance, setWalletBalance] = useState<string>('0');
 
   // Notifications
   const { addNotification } = useNotifications();
 
+  const { getToken } = useTokens();
+  
   // Create ethers provider from wagmi public client
   const provider = React.useMemo(() => {
     const rpcUrl = publicClient?.transport?.url || 'http://localhost:8545';
@@ -75,9 +80,6 @@ export default function Pool() {
     proposeLPFeeChange: hookProposeLPFeeChange,
     executeLPFeeChange: hookExecuteLPFeeChange,
     approve: hookApprove,
-    shouldShowApproveButton,
-    shouldShowDepositButton,
-    getButtonState
   } = useFlashLender({
     provider,
     userAddress: address || undefined,
@@ -85,34 +87,8 @@ export default function Pool() {
     refreshInterval: 30000
   });
 
-  // Fetch user's wallet balance for the current token
-  const fetchWalletBalance = useCallback(async () => {
-    if (!tokenAddress || !address || !provider) {
-      setWalletBalance('0');
-      return;
-    }
-
-    try {
-      const tokenContract = new ethers.Contract(
-        tokenAddress,
-        ['function balanceOf(address owner) view returns (uint256)'],
-        provider
-      );
-      
-      const balance = await tokenContract.balanceOf?.(address);
-      setWalletBalance(balance.toString());
-    } catch (error) {
-      console.error('Error fetching wallet balance:', error);
-      setWalletBalance('0');
-    }
-  }, [tokenAddress, address, provider]);
-
   // Extract specific pool and user data
   useEffect(() => {
-    console.log('Pool component - tokenAddress:', tokenAddress);
-    console.log('Pool component - pools:', pools);
-    console.log('Pool component - userPositions:', userPositions);
-    console.log('Pool component - isHookLoading:', isHookLoading);
     
     if (!tokenAddress) {
       setError('No token address provided');
@@ -134,28 +110,32 @@ export default function Pool() {
     if (pools && pools.length > 0) {
       const pool = pools.find(p => p?.address?.toLowerCase() === tokenAddress?.toLowerCase());
       if (pool) {
-        console.log('Found pool:', pool);
         setPoolData(pool);
         setError(null);
       } else {
-        console.log('Pool not found for token:', tokenAddress);
         setError('Pool not found for this token address');
       }
     } else if (!isHookLoading) {
       // Only show error if hook is not loading and no pools found
-      console.log('No pools available and hook finished loading');
       setError('No pools available');
     }
+    // Format status amounts
+    const decimals = poolData && poolData.decimals || 18;
+    const tokenInContext = poolData && getToken(poolData.address);
+    setUserBalance(tokenInContext?.userBalance || BigInt(0));
+    setUserAllowance(tokenInContext?.userAllowance || BigInt(0));
 
     // Find user position for this specific token
     if (isConnected) {
       if (userPositions && userPositions.length > 0) {
-        const position = userPositions.find(p => p?.token?.address?.toLowerCase() === tokenAddress?.toLowerCase());
-        console.log('Found user position:', position);
+        const position = userPositions.find(p => p?.address?.toLowerCase() === tokenAddress?.toLowerCase());
+        if (position) {
+          position.userBalance = tokenInContext?.userBalance || BigInt(0);
+          position.userAllowance = tokenInContext?.userAllowance || BigInt(0);
+        }
         setUserPosition(position || null);
       } else {
         // Clear user position if no positions are found for connected user
-        console.log('No user positions found, clearing user position');
         setUserPosition(null);
       }
     } else {
@@ -177,9 +157,6 @@ export default function Pool() {
         const currentBlock = await provider.getBlockNumber();
         const fromBlock = Math.max(0, currentBlock - 5000);
 
-        console.log('Loading actions from block:', fromBlock, 'to', currentBlock);
-        console.log('Token address:', tokenAddress);
-        console.log('User address:', address);
 
         const [userActionsData, poolActionsData, statsData, governanceData] = await Promise.all([
           // User-specific actions
@@ -189,13 +166,9 @@ export default function Pool() {
           // Pool statistics
           service.getPoolStatistics(tokenAddress, fromBlock),
           // Fee governance data
-          service.getGovernanceData([1, 25, 50, 100])
+          service.getGovernanceData()
         ]);
 
-        console.log('User actions loaded:', userActionsData);
-        console.log('Pool actions loaded:', poolActionsData.length);
-        console.log('Pool statistics:', statsData);
-        console.log('Governance data:', governanceData);
 
         setUserActions(userActionsData);
         setPoolActions(poolActionsData.slice(0, 20)); // Limit to 20 most recent
@@ -220,7 +193,15 @@ export default function Pool() {
             }))
             .filter((vote: FeeVote) => vote.votes > 0) // Only show fees with votes
             .sort((a: FeeVote, b: FeeVote) => Number(b.votes - a.votes)); // Sort by votes descending
-          
+            
+          if (!feeVotes.some(feeVote => feeVote.fee === currentFee)) {
+            feeVotes.push({
+              fee: currentFee,
+              votes: BigInt(0),
+              percentage: 0,
+              isActive: true
+            });
+          }
           setFeeGovernance(feeVotes);
         } else {
           setFeeGovernance([]);
@@ -261,11 +242,6 @@ export default function Pool() {
 
     checkStatus();
   }, [tokenAddress, userPosition, provider]);
-
-  // Fetch wallet balance when token or user changes
-  useEffect(() => {
-    fetchWalletBalance();
-  }, [fetchWalletBalance]);
 
   // Format amount helper
   const formatAmount = useCallback((amount: string, decimals: number = 18, symbol: string = '') => {
@@ -393,7 +369,6 @@ export default function Pool() {
 
   const handleChangeFee = async () => {
     if (!isConnected || !address || !tokenAddress || !userPosition?.voteSelection) {
-      console.error('Missing required data for fee change');
       addNotification('Please ensure your wallet is connected and you have voted for a fee.', 'warning');
       return;
     }
@@ -407,7 +382,6 @@ export default function Pool() {
       
       if (proposalStatus.canExecute) {
         // Proposal exists and can be executed
-        console.log(`Executing existing proposal for fee change to: ${userPosition.voteSelection} basis points`);
         if (signer) {
           await hookExecuteLPFeeChange(tokenAddress, userPosition.voteSelection, signer);
         } else {
@@ -422,7 +396,6 @@ export default function Pool() {
         return;
       } else {
         // No proposal exists, need to create one first
-        console.log(`Creating proposal for fee change to: ${userPosition.voteSelection} basis points`);
         setIsLoadingProposal(true);
         if (signer) {
           await hookProposeLPFeeChange(tokenAddress, userPosition.voteSelection, signer);
@@ -441,7 +414,6 @@ export default function Pool() {
       // Refresh data after successful execution
       await refresh();
       // Also refresh wallet balance to ensure UI is up to date
-      await fetchWalletBalance();
     } catch (error) {
       console.error('Error with fee change process:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -464,29 +436,19 @@ export default function Pool() {
     }
     
     try {
-      console.log('🔐 Forcing MetaMask signer (not local RPC)');
-      
       // Ensure we're using MetaMask's provider, not the local RPC
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-      
-      console.log('✅ MetaMask signer created:', await signer.getAddress());
       return signer;
     } catch (error) {
-      console.error('❌ Error creating MetaMask signer:', error);
       throw new Error('Failed to get MetaMask signer');
     }
   };
 
   // Modal handlers
   const openModal = (action: ActionType) => {
-    console.log('🔘 openModal called with action:', action);
-    console.log('🔘 Current modal state - isModalOpen:', isModalOpen);
-    console.log('🔘 Is connected:', isConnected);
-    console.log('🔘 Available balance:', getAvailableBalance());
     setCurrentAction(action);
     setIsModalOpen(true);
-    console.log('🔘 Modal should now be open');
   };
 
   const closeModal = () => {
@@ -544,7 +506,6 @@ export default function Pool() {
       // Refresh data after successful transaction
       await refresh();
       // Also refresh wallet balance to ensure UI is up to date
-      await fetchWalletBalance();
     } catch (error) {
       console.error('Transaction failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -560,15 +521,14 @@ export default function Pool() {
     
     try {
       const feesAmount = userPosition.withdrawable.fees;
-      
-      if (feesAmount && feesAmount !== '0') {
+
+      if (feesAmount && feesAmount !== BigInt(0)) {
         const formatted = ethers.formatUnits(feesAmount, poolData.decimals || 18);
         return formatted;
       } else {
         return '0';
       }
     } catch (error) {
-      console.log('Error formatting fees:', error);
       return '0';
     }
   };
@@ -581,12 +541,11 @@ export default function Pool() {
     switch (currentAction) {
       case 'deposit':
         // Convert from wei to formatted number for the modal
-        if (walletBalance && walletBalance !== '0') {
+        if (userBalance) {
           try {
-            const formatted = ethers.formatUnits(walletBalance, poolData.decimals || 18);
+            const formatted = ethers.formatUnits(userBalance, poolData.decimals || 18);
             return formatted;
           } catch (error) {
-            console.log('Error formatting deposit balance:', error);
             return '0';
           }
         } else {
@@ -600,7 +559,6 @@ export default function Pool() {
             const formatted = ethers.formatUnits(withdrawAmount, poolData.decimals || 18);
             return formatted;
           } catch (error) {
-            console.log('Error formatting withdraw balance:', error);
             return '0';
           }
         } else {
@@ -612,6 +570,9 @@ export default function Pool() {
         return '0';
     }
   };
+
+  // Using the new user actions utility
+  const userActionAnalysis = analyzeUserActions(userBalance, userAllowance, userPosition?.deposits || BigInt(0), poolData?.decimals);
 
   return (
     <div className="dash-container">
@@ -653,7 +614,7 @@ export default function Pool() {
                     Total Value Locked
                   </div>
                   <div className="stat-value">
-                    {poolData.formattedLiquidity || poolData.totalLiquidity} {poolData.symbol || 'Tokens'}
+                    {poolData.formattedLiquidity || poolData.totalLiquidity}
                   </div>
                 </div>
                 
@@ -684,7 +645,6 @@ export default function Pool() {
                   </div>
                   <div className="stat-value">
                     {(() => {
-                      console.log('APY display - poolData.apy:', poolData.apy);
                       return poolData.apy !== undefined ? `${poolData.apy.toFixed(2)}%` : 'N/A';
                     })()}
                   </div>
@@ -727,8 +687,13 @@ export default function Pool() {
 
           {/* Fee Governance Section */}
           <div className="card surface margin-top">
-            <div className="card-head">
+            <div className="card-head-with-button-governance">
               <h3>Fee Governance</h3>
+              {hasUserPosition && <button 
+                className="btn-xs primary" 
+                disabled={!isConnected}
+                onClick={() => openModal('vote')}
+              >Vote</button>}
             </div>
             <div className="padding-standard">
               {feeGovernance.length > 0 ? (
@@ -739,9 +704,6 @@ export default function Pool() {
                         <th>Fee %</th>
                         <th>Percentage</th>
                         <th>Status</th>
-                        {hasUserPosition && (
-                          <th className="center">Vote</th>
-                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -768,29 +730,14 @@ export default function Pool() {
                               <span className="status-badge active">
                                 ✓ Active
                               </span>
-                            ) : (
+                            ) : (userPosition && userPosition.voteSelection === vote.fee) ? (
                               <span className="status-badge voted">
                                 Voted
                               </span>
-                            )}
+                            ) : <span className="status-badge">
+                                Not Voted
+                              </span>}
                           </td>
-                          {hasUserPosition && (
-                            <td className="center">
-                              <button
-                                onClick={() => openModal('vote')}
-                                disabled={!isConnected || vote.isActive}
-                                className={`vote-button ${
-                                  vote.isActive 
-                                    ? 'disabled' 
-                                    : userPosition?.voteSelection === vote.fee
-                                      ? 'user-voted'
-                                      : 'available'
-                                }`}
-                              >
-                                {userPosition?.voteSelection === vote.fee ? 'Voted' : 'Vote'}
-                              </button>
-                            </td>
-                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -948,68 +895,29 @@ export default function Pool() {
                       </div>
                     )}
                     <div className="row-actions center">
-                      {isConnected && address && tokenAddress ? (
-                        (() => {
-                          const buttonState = getButtonState(tokenAddress);
-                          const showApprove = shouldShowApproveButton(tokenAddress);
-                          const showDeposit = shouldShowDepositButton(tokenAddress);
-                          
-                          if (buttonState === 'none') {
-                            return (
-                              <button 
-                                className="btn-md outline" 
-                                disabled
-                              >
-                                No Balance Data
-                              </button>
-                            );
-                          }
-                          
-                          // Show approve and/or deposit buttons based on state (users with no balance won't see buttons)
-                          if (!showApprove && !showDeposit) {
-                            return null; // No buttons to show
-                          }
-                          
-                          return (
-                            <>
-                              {showApprove && (
-                                <button 
-                                  className={`btn-md primary ${showDeposit ? 'pool-approve-button-with-margin' : 'pool-approve-button-no-margin'}`}
-                                  onClick={() => openModal('approve')}
-                                >
-                                  Approve
-                                </button>
-                              )}
-                              {showDeposit && (
-                                <button 
-                                  className="btn-md success" 
-                                  onClick={() => openModal('deposit')}
-                                >
-                                  Deposit
-                                </button>
-                              )}
-                            </>
-                          );
-                        })()
-                      ) : (
+                      {isActionAllowed(userActionAnalysis, 'approve', '0') && (
+                        <button 
+                          className="btn-md success" 
+                          onClick={() => openModal('approve')}
+                        >
+                          Approve
+                        </button>
+                      )}
+                      {isActionAllowed(userActionAnalysis, 'deposit', '0') && (
                         <button 
                           className="btn-md success" 
                           onClick={() => openModal('deposit')}
-                          disabled={!isConnected}
                         >
                           Deposit
                         </button>
                       )}
-                      {hasUserPosition && (
-                        <>
-                          <button 
-                            className="btn-md success" 
-                            onClick={() => openModal('withdraw')}
-                            disabled={!isConnected}
-                          >
-                            Withdraw 
-                          </button>
-                        </>
+                      {isActionAllowed(userActionAnalysis, 'withdraw', '0') && (
+                        <button 
+                          className="btn-md success" 
+                          onClick={() => openModal('withdraw')}
+                        >
+                          Withdraw
+                        </button>
                       )}
                     </div>
                   </div>
@@ -1022,54 +930,18 @@ export default function Pool() {
                       Start earning fees by providing liquidity to this pool.
                     </div>
                     <div className="row-actions center">
-                      {isConnected && address && tokenAddress ? (
-                        (() => {
-                          const buttonState = getButtonState(tokenAddress);
-                          const showApprove = shouldShowApproveButton(tokenAddress);
-                          const showDeposit = shouldShowDepositButton(tokenAddress);
-                          
-                          if (buttonState === 'none') {
-                            return (
-                              <button 
-                                className="btn-lg outline" 
-                                disabled
-                              >
-                                No Balance Data
-                              </button>
-                            );
-                          }
-                          
-                          // Show approve and/or deposit buttons based on state (users with no balance won't see buttons)
-                          if (!showApprove && !showDeposit) {
-                            return null; // No buttons to show
-                          }
-                          
-                          return (
-                            <>
-                              {showApprove && (
-                                <button 
-                                  className={`btn-lg primary ${showDeposit ? 'pool-approve-button-with-margin' : 'pool-approve-button-no-margin'}`}
-                                  onClick={() => openModal('approve')}
-                                >
-                                  Approve
-                                </button>
-                              )}
-                              {showDeposit && (
-                                <button 
-                                  className="btn-lg success" 
-                                  onClick={() => openModal('deposit')}
-                                >
-                                  Deposit
-                                </button>
-                              )}
-                            </>
-                          );
-                        })()
-                      ) : (
+                      {isActionAllowed(userActionAnalysis, 'approve', '0') && (
                         <button 
-                          className="btn-lg success" 
-                          onClick={() => openModal('deposit')} 
-                          disabled={!isConnected}
+                          className="btn-md success" 
+                          onClick={() => openModal('approve')}
+                        >
+                          Approve
+                        </button>
+                      )}
+                      {isActionAllowed(userActionAnalysis, 'deposit', '0') && (
+                        <button 
+                          className="btn-md success" 
+                          onClick={() => openModal('deposit')}
                         >
                           Deposit
                         </button>
@@ -1104,6 +976,7 @@ export default function Pool() {
         availableBalance={getAvailableBalance()}
         availableFees={getAvailableFees()}
         currentVoteFee={userPosition?.voteSelection ? userPosition.voteSelection / 100 : 0}
+        feeGovernance={feeGovernance}
         onConfirm={handleModalConfirm}
         isLoading={isTransactionLoading}
       />

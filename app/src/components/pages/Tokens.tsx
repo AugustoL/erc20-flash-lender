@@ -1,29 +1,20 @@
 import { useFlashLender } from '../../hooks/useFlashLender';
-import { NewTokenDepositModal, DiscoverTokensModal } from '../common/modal';
-import { useWalletRows } from '../../hooks/useWalletData';
-import WalletTokenRow from '../common/WalletTokenRow';
-import { useTokens } from '../../context';
+import { NewTokenDepositModal } from '../common/modal';
+import TokensTableRow from '../common/TokensTableRow';
+import { useTokensRows } from '../../hooks/useTokensData';
 import { useWalletUtils } from '../../hooks/useWalletUtils';
 import { useModalManager } from '../../hooks/useModalManager';
 import { useTransactions } from '../../hooks/useTransactions';
 
-export default function Wallet() {
-  const { address, isConnected, provider, chainId } = useWalletUtils();
-  const { getAllTokens } = useTokens();
-  
-  const {
-    isDiscoverModalOpen,
+export default function Tokens() {
+  const { address, isConnected, provider } = useWalletUtils();
+  const { 
     isNewTokenModalOpen,
-    currentAction,
-    selectedToken,
     isTransactionLoading,
-    openDiscoverModal,
-    closeDiscoverModal,
     openNewTokenModal,
     closeNewTokenModal,
     setTransactionLoading
   } = useModalManager();
-  
   const { executeNewTokenTransaction } = useTransactions();
 
   const {
@@ -38,11 +29,16 @@ export default function Wallet() {
     autoRefresh: false,
     refreshInterval: 30000
   });
-  const savedTokens = getAllTokens();
-  // Transform pools data into table rows format using optimized hook
-  const rows = useWalletRows(userPositions, savedTokens, pools);
 
-  const handleNewTokenConfirm = async (tokenAddress: string, amount: string, tokenInfo: { symbol: string; name: string; decimals: number }) => {
+  // Transform pools data into table rows format using optimized hook
+  const rows = useTokensRows(pools, userPositions);
+
+
+  const handleNewTokenDeposit = async (
+    tokenAddress: string, 
+    amount: string, 
+    tokenInfo: { symbol: string; name: string; decimals: number }
+  ) => {
     setTransactionLoading(true);
     
     try {
@@ -53,7 +49,7 @@ export default function Wallet() {
     }
   };
 
-  const handleNewTokenApprove = async (tokenAddress: string, amount: string) => {
+  const handleNewTokenApproval = async (tokenAddress: string, amount: string) => {
     setTransactionLoading(true);
     
     try {
@@ -69,7 +65,7 @@ export default function Wallet() {
     return (
       <div className="dash-container">
         <div className="card surface">
-          <div className="card-head"><h3>WALLET TOKENS</h3></div>
+          <div className="card-head"><h3>Token Pools</h3></div>
           <div className="tokens-loading-container">
             <div>Loading protocol data...</div>
           </div>
@@ -83,7 +79,7 @@ export default function Wallet() {
     return (
       <div className="dash-container">
         <div className="card surface">
-          <div className="card-head"><h3>WALLET TOKENS</h3></div>
+          <div className="card-head"><h3>Token Pools</h3></div>
           <div className="tokens-error-container">
             <div className="tokens-error-message">
               Error loading data: {error.message}
@@ -101,13 +97,14 @@ export default function Wallet() {
     <div className="dash-container">
       <div className="card surface">
         <div className="card-head-with-button">
-          <h3>WALLET TOKENS</h3>
+          <h3>Token Pools</h3>
           <button 
             className="btn-md primary" 
-            onClick={openDiscoverModal}
+            onClick={() => openNewTokenModal()}
             disabled={!isConnected}
           >
-            Discover Tokens
+            <span>+</span>
+            Deposit Token
           </button>
         </div>
         <div className="table-wrapper">
@@ -115,9 +112,10 @@ export default function Wallet() {
             <thead>
               <tr>
                 <th>Asset</th>
-                <th className="center">Type</th>
+                <th className="center">TVL</th>
+                <th className="center">APY</th>
+                <th className="center">LP Fee</th>
                 <th className="center">Status</th>
-                <th className="center">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -132,13 +130,11 @@ export default function Wallet() {
                 </tr>
               ) : (
                 rows.map(row => (
-                  <WalletTokenRow
+                  <TokensTableRow
                     key={row.address}
                     row={row}
                     isConnected={isConnected}
                     address={address}
-                    chainId={chainId}
-                    onDeposit={openNewTokenModal}
                   />
                 ))
               )}
@@ -151,25 +147,17 @@ export default function Wallet() {
       <NewTokenDepositModal
         isOpen={isNewTokenModalOpen}
         onClose={closeNewTokenModal}
-        onConfirm={handleNewTokenConfirm}
-        onApprove={handleNewTokenApprove}
+        onConfirm={handleNewTokenDeposit}
+        onApprove={handleNewTokenApproval}
         isLoading={isTransactionLoading}
         provider={provider}
         userAddress={address}
-        selectedTokenAddress={selectedToken}
-        existingTokens={savedTokens.map(token => ({
-          address: token.address,
-          symbol: token.symbol,
-          name: token.name,
-          decimals: token.decimals
+        existingTokens={pools.map(pool => ({
+          address: pool.address,
+          symbol: pool.symbol || 'Unknown',
+          name: pool.name || 'Unknown Token',
+          decimals: pool.decimals || 18
         }))}
-      />
-
-      {/* Discover Tokens Modal */}
-      <DiscoverTokensModal
-        isOpen={isDiscoverModalOpen}
-        onClose={closeDiscoverModal}
-        provider={provider}
       />
     </div>
   );

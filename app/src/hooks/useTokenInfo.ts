@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
+import { MulticallService } from '../services/MulticallService';
 
 export interface TokenInfo {
   address: string;
@@ -58,23 +59,45 @@ export function useTokenInfo(provider?: ethers.Provider): UseTokenInfoReturn {
     setError(null);
 
     try {
-      // Create a contract instance to fetch token info
-      const tokenContract = new ethers.Contract(
-        normalizedAddress,
-        [
-          'function symbol() view returns (string)',
-          'function name() view returns (string)',
-          'function decimals() view returns (uint8)'
-        ],
-        provider
-      );
+      // Use multicall for token information
+      const multicallService = new MulticallService(provider);
+      const ERC20_ABI = [
+        'function symbol() view returns (string)',
+        'function name() view returns (string)',
+        'function decimals() view returns (uint8)'
+      ];
+      
+      const tokenInterface = new ethers.Interface(ERC20_ABI);
+      
+      const multicallCalls = [
+        {
+          target: normalizedAddress,
+          callData: MulticallService.encodeCall(tokenInterface, 'symbol', []),
+          allowFailure: true,
+          contractInterface: tokenInterface,
+          methodName: 'symbol'
+        },
+        {
+          target: normalizedAddress,
+          callData: MulticallService.encodeCall(tokenInterface, 'name', []),
+          allowFailure: true,
+          contractInterface: tokenInterface,
+          methodName: 'name'
+        },
+        {
+          target: normalizedAddress,
+          callData: MulticallService.encodeCall(tokenInterface, 'decimals', []),
+          allowFailure: true,
+          contractInterface: tokenInterface,
+          methodName: 'decimals'
+        }
+      ];
 
-      // Fetch token information
-      const [symbol, name, decimals] = await Promise.all([
-        tokenContract.symbol?.() || 'UNKNOWN',
-        tokenContract.name?.() || 'Unknown Token',
-        tokenContract.decimals?.() || 18
-      ]);
+      const response = await multicallService.multicall(multicallCalls);
+      
+      const symbol = response.decoded[0]?.[0] || 'UNKNOWN';
+      const name = response.decoded[1]?.[0] || 'Unknown Token';
+      const decimals = response.decoded[2]?.[0] || 18;
 
       const info: TokenInfo = {
         address: normalizedAddress,

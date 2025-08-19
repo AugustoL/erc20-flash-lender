@@ -3,27 +3,35 @@ import { ethers } from 'ethers';
 import { Contract } from 'ethers';
 import { getERC20FlashLenderAddress } from '../config';
 import ERC20FlashLenderABI from '../contracts/ERC20FlashLender.json';
+import { createTokenBalance } from '../context/TokensContext';
+import { MulticallService } from './MulticallService';
 import {
-  TokenPoolData,
-  UserPositionData,
+  TokenPool,
+  UserPosition,
   ProposalData,
   UserAction,
   FlashLoanAction,
   VoteAction,
   FeeProposalAction,
-  FeeExecutionAction
+  FeeExecutionAction,
+  TokenBalance
 } from '../types';
 
 export class FlashLenderDataService {
   private provider: ethers.Provider;
   private contract: Contract;
+  private multicallService: MulticallService;
   private cache: Map<string, { data: any; timestamp: number }> = new Map();
   private cacheTimeout = 10000; // 10 seconds cache
   private contractAddress: string;
+  private onTokenDiscovered?: (token: TokenBalance) => void;
   
-  constructor(chainId?: number) {
+  constructor(chainId?: number, onTokenDiscovered?: (token: TokenBalance) => void) {
     // Create provider from current environment
     this.provider = this.createProvider();
+    
+    // Store the token callback
+    this.onTokenDiscovered = onTokenDiscovered;
     
     // Get contract address for the current chain
     const currentChainId = chainId || 31337; // Default to localhost
@@ -35,6 +43,14 @@ export class FlashLenderDataService {
     
     this.contractAddress = contractAddress;
     this.contract = new Contract(contractAddress, ERC20FlashLenderABI.abi, this.provider);
+    this.multicallService = new MulticallService(this.provider);
+  }
+  
+  /**
+   * Get the provider instance
+   */
+  get providerInstance(): ethers.Provider {
+    return this.provider;
   }
   
   /**
@@ -76,6 +92,7 @@ export class FlashLenderDataService {
     
     this.contractAddress = contractAddress;
     this.contract = new Contract(contractAddress, ERC20FlashLenderABI.abi, this.provider);
+    this.multicallService = new MulticallService(this.provider);
     this.clearCache(); // Clear cache when changing chains
   }
 
@@ -84,7 +101,7 @@ export class FlashLenderDataService {
   /**
    * Get all token pools with their data, optionally enriched with user-specific data
    */
-  async getAllTokenPools(userAddress?: string, apyCalculationBlocks: number = 1000): Promise<TokenPoolData[]> {
+  async getAllTokenPools(userAddress?: string): Promise<TokenPool[]> {
     const cacheKey = userAddress ? `pools_all_${userAddress}` : 'pools_all';
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
@@ -97,66 +114,154 @@ export class FlashLenderDataService {
         return [];
       }
 
-      const pools: TokenPoolData[] = [];
+      const pools: TokenPool[] = [];
       
-      // Make individual calls for each token (simpler and more reliable)
-      for (const token of tokenAddresses) {
-        try {
-          const [totalLiquidity, totalShares, lpFee, managementFee] = await Promise.all([
-            this.contract.totalLiquidity(token),
-            this.contract.totalShares(token),
-            this.contract.getEffectiveLPFee(token),
-            this.contract.collectedManagementFees(token)
-          ]);
-          
-          const poolData: TokenPoolData = {
-            address: token,
-            totalLiquidity,
-            totalShares,
-            lpFee: Number(lpFee),
-            managementFee
-          };
+      // Use multicall for all pool data
+      try {
+        
+        // Prepare all multicall calls
+        const multicallCalls = [];
+        for (const tokenAddress of tokenAddresses) {
+          // Add 4 calls per token: totalLiquidity, totalShares, getEffectiveLPFee, collectedManagementFees
+          multicallCalls.push(
+            {
+              target: this.contractAddress,
+              callData: MulticallService.encodeCall(this.contract.interface, 'totalLiquidity', [tokenAddress]),
+              allowFailure: true,
+              contractInterface: this.contract.interface,
+              methodName: 'totalLiquidity'
+            },
+            {
+              target: this.contractAddress,
+              callData: MulticallService.encodeCall(this.contract.interface, 'totalShares', [tokenAddress]),
+              allowFailure: true,
+              contractInterface: this.contract.interface,
+              methodName: 'totalShares'
+            },
+            {
+              target: this.contractAddress,
+              callData: MulticallService.encodeCall(this.contract.interface, 'getEffectiveLPFee', [tokenAddress]),
+              allowFailure: true,
+              contractInterface: this.contract.interface,
+              methodName: 'getEffectiveLPFee'
+            },
+            {
+              target: this.contractAddress,
+              callData: MulticallService.encodeCall(this.contract.interface, 'collectedManagementFees', [tokenAddress]),
+              allowFailure: true,
+              contractInterface: this.contract.interface,
+              methodName: 'collectedManagementFees'
+            }
+          );
+        }
 
-          // Calculate APY based on recent activity (configurable block range)
+        // Execute multicall
+        const response = await this.multicallService.multicall(multicallCalls);
+        
+        // Process results - 4 results per token
+        for (let i = 0; i < tokenAddresses.length; i++) {
+          const tokenAddress = tokenAddresses[i];
+          const baseIndex = i * 4;
+          
           try {
-            const currentBlock = await this.provider.getBlockNumber();
-            const fromBlock = Math.max(0, currentBlock - apyCalculationBlocks);
-            const apy = await this.calculatePoolAPY(token, fromBlock, currentBlock);
-            console.log(`APY calculated for token ${token} using ${apyCalculationBlocks} blocks:`, apy);
-            poolData.apy = apy;
+            const totalLiquidity = response.decoded[baseIndex]?.[0] || BigInt(0);
+            const totalShares = response.decoded[baseIndex + 1]?.[0] || BigInt(0);
+            const lpFee = response.decoded[baseIndex + 2]?.[0] || 25; // default 25 bps
+            const managementFee = response.decoded[baseIndex + 3]?.[0] || BigInt(0);
+
+            const poolData: TokenPool = {
+              address: tokenAddress,
+              totalLiquidity,
+              totalShares,
+              lpFee: Number(lpFee),
+              managementFee
+            };
+            
+            pools.push(poolData);
+
+            // Get user's balance and allowance for this token and add to context
+            if (userAddress && this.onTokenDiscovered) {
+              const [userBalance, userAllowance] = await this.getUserTokenData(tokenAddress, userAddress);
+
+              // Get token metadata for complete TokenBalance object
+              const tokenMetadata = await this.getTokenMetadata(tokenAddress);
+
+              // Create complete TokenBalance object
+              const tokenBalance = createTokenBalance(
+                tokenAddress,
+                tokenMetadata.symbol,
+                tokenMetadata.name,
+                tokenMetadata.decimals,
+                userBalance,
+                userAllowance,
+                undefined // logoUrl can be added later
+              );
+              
+              // Add to context via callback
+              this.onTokenDiscovered(tokenBalance);
+            }
           } catch (error) {
-            console.warn(`Failed to calculate APY for token ${token}:`, error);
-            poolData.apy = 0; // Default to 0 if calculation fails
+            console.error(`Failed to process multicall results for token ${tokenAddress}:`, error);
+            // Add empty pool data as fallback
+            pools.push({
+              address: tokenAddress,
+              totalLiquidity: BigInt(0),
+              totalShares: BigInt(0),
+              lpFee: 25,
+              managementFee: BigInt(0)
+            });
           }
+        }
+      } catch (error) {
+        console.warn('Multicall failed for getAllTokenPools, falling back to individual calls:', error);
+        
+        // Fallback to original Promise.all approach
+        for (const tokenAddress of tokenAddresses) {
+          try {
+            const [totalLiquidity, totalShares, lpFee, managementFee] = await Promise.all([
+              this.contract.totalLiquidity(tokenAddress),
+              this.contract.totalShares(tokenAddress),
+              this.contract.getEffectiveLPFee(tokenAddress),
+              this.contract.collectedManagementFees(tokenAddress)
+            ]);
+            
+            const poolData: TokenPool = {
+              address: tokenAddress,
+              totalLiquidity,
+              totalShares,
+              lpFee: Number(lpFee),
+              managementFee
+            };
+            
+            pools.push(poolData);
 
-          // Add user-specific data if userAddress provided
-          if (userAddress) {
-            const [userBalance, userAllowance] = await this.getUserTokenData(token, userAddress);
-            poolData.userBalance = userBalance;
-            poolData.userAllowance = userAllowance;
+            // Get user's balance and allowance for this token and add to context
+            if (userAddress && this.onTokenDiscovered) {
+              const [userBalance, userAllowance] = await this.getUserTokenData(tokenAddress, userAddress);
+
+              // Get token metadata for complete TokenBalance object
+              const tokenMetadata = await this.getTokenMetadata(tokenAddress);
+
+              // Create complete TokenBalance object
+              const tokenBalance = createTokenBalance(
+                tokenAddress,
+                tokenMetadata.symbol,
+                tokenMetadata.name,
+                tokenMetadata.decimals,
+                userBalance,
+                userAllowance,
+                undefined // logoUrl can be added later
+              );
+              
+              // Add to context via callback
+              this.onTokenDiscovered(tokenBalance);
+            }
+          } catch (error) {
+            console.error(`Failed to fetch data for token ${tokenAddress}:`, error);
           }
-          
-          pools.push(poolData);
-        } catch (error) {
-          console.warn(`Failed to fetch data for token ${token}:`, error);
-          // Add empty entry so we still show something
-          const poolData: TokenPoolData = {
-            address: token,
-            totalLiquidity: BigInt(0),
-            totalShares: BigInt(0),
-            lpFee: 0,
-            managementFee: BigInt(0)
-          };
-
-          if (userAddress) {
-            poolData.userBalance = BigInt(0);
-            poolData.userAllowance = BigInt(0);
-          }
-
-          pools.push(poolData);
         }
       }
-      
+
       // Optionally fetch token metadata
       await this.enrichWithTokenMetadata(pools);
       
@@ -171,7 +276,7 @@ export class FlashLenderDataService {
   /**
    * Get all user positions - automatically fetches user's deposited tokens from contract
    */
-  async getUserPositions(userAddress: string): Promise<UserPositionData[]> {
+  async getUserPositions(userAddress: string): Promise<UserPosition[]> {
     const cacheKey = `user_${userAddress}`;
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
@@ -184,56 +289,194 @@ export class FlashLenderDataService {
         return [];
       }
 
-      const positions: UserPositionData[] = [];
+      const positions: UserPosition[] = [];
       
-      // Make individual calls for each token
-      for (const token of tokenAddresses) {
-        try {
-        const [deposits, shares, withdrawable, voteSelection] = await Promise.all([
-          this.contract.deposits(token, userAddress),
-          this.contract.shares(token, userAddress),
-          this.contract.getWithdrawableAmount(token, userAddress),
-          this.contract.lpFeeAmountSelected(token, userAddress)
-        ]);
+      // Use multicall for all user position data
+      try {
         
-        // Get user's balance and allowance for this token
-        const [userBalance, userAllowance] = await this.getUserTokenData(token, userAddress);
+        // Prepare all multicall calls (8 calls per token)
+        const multicallCalls = [];
+        for (const tokenAddress of tokenAddresses) {
+          multicallCalls.push(
+            {
+              target: this.contractAddress,
+              callData: MulticallService.encodeCall(this.contract.interface, 'totalLiquidity', [tokenAddress]),
+              allowFailure: true,
+              contractInterface: this.contract.interface,
+              methodName: 'totalLiquidity'
+            },
+            {
+              target: this.contractAddress,
+              callData: MulticallService.encodeCall(this.contract.interface, 'totalShares', [tokenAddress]),
+              allowFailure: true,
+              contractInterface: this.contract.interface,
+              methodName: 'totalShares'
+            },
+            {
+              target: this.contractAddress,
+              callData: MulticallService.encodeCall(this.contract.interface, 'getEffectiveLPFee', [tokenAddress]),
+              allowFailure: true,
+              contractInterface: this.contract.interface,
+              methodName: 'getEffectiveLPFee'
+            },
+            {
+              target: this.contractAddress,
+              callData: MulticallService.encodeCall(this.contract.interface, 'collectedManagementFees', [tokenAddress]),
+              allowFailure: true,
+              contractInterface: this.contract.interface,
+              methodName: 'collectedManagementFees'
+            },
+            {
+              target: this.contractAddress,
+              callData: MulticallService.encodeCall(this.contract.interface, 'deposits', [tokenAddress, userAddress]),
+              allowFailure: true,
+              contractInterface: this.contract.interface,
+              methodName: 'deposits'
+            },
+            {
+              target: this.contractAddress,
+              callData: MulticallService.encodeCall(this.contract.interface, 'shares', [tokenAddress, userAddress]),
+              allowFailure: true,
+              contractInterface: this.contract.interface,
+              methodName: 'shares'
+            },
+            {
+              target: this.contractAddress,
+              callData: MulticallService.encodeCall(this.contract.interface, 'getWithdrawableAmount', [tokenAddress, userAddress]),
+              allowFailure: true,
+              contractInterface: this.contract.interface,
+              methodName: 'getWithdrawableAmount'
+            },
+            {
+              target: this.contractAddress,
+              callData: MulticallService.encodeCall(this.contract.interface, 'lpFeeAmountSelected', [tokenAddress, userAddress]),
+              allowFailure: true,
+              contractInterface: this.contract.interface,
+              methodName: 'lpFeeAmountSelected'
+            }
+          );
+        }
+
+        // Execute multicall
+        const response = await this.multicallService.multicall(multicallCalls);
         
-        positions.push({
-          token,
-          deposits,
-          shares,
-          withdrawable: {
-            netAmount: withdrawable[0],
-            grossAmount: withdrawable[1],
-            principal: withdrawable[2],
-            fees: withdrawable[3],
-            exitFee: withdrawable[4]
-          },
-          voteSelection: Number(voteSelection),
-          userBalance,
-          userAllowance
-        });
+        // Process results - 8 results per token
+        for (let i = 0; i < tokenAddresses.length; i++) {
+          const tokenAddress = tokenAddresses[i];
+          const baseIndex = i * 8;
+          
+          try {
+            const totalLiquidity = response.decoded[baseIndex]?.[0] || BigInt(0);
+            const totalShares = response.decoded[baseIndex + 1]?.[0] || BigInt(0);
+            const lpFee = response.decoded[baseIndex + 2]?.[0] || 25;
+            const managementFee = response.decoded[baseIndex + 3]?.[0] || BigInt(0);
+            const deposits = response.decoded[baseIndex + 4]?.[0] || BigInt(0);
+            const shares = response.decoded[baseIndex + 5]?.[0] || BigInt(0);
+            const withdrawable = response.decoded[baseIndex + 6] || [BigInt(0), BigInt(0), BigInt(0), BigInt(0), BigInt(0)];
+            const voteSelection = response.decoded[baseIndex + 7]?.[0] || BigInt(0);
+
+            // Get user's balance and allowance for this token
+            const [userBalance, userAllowance] = await this.getUserTokenData(tokenAddress, userAddress);
+
+            positions.push({
+              address: tokenAddress,
+              totalLiquidity,
+              totalShares,
+              lpFee,
+              managementFee,
+              deposits,
+              shares,
+              withdrawable: {
+                netAmount: withdrawable[0] || BigInt(0),
+                grossAmount: withdrawable[1] || BigInt(0),
+                principal: withdrawable[2] || BigInt(0),
+                fees: withdrawable[3] || BigInt(0),
+                exitFee: withdrawable[4] || BigInt(0)
+              },
+              voteSelection: Number(voteSelection),
+              userBalance,
+              userAllowance
+            });
+          } catch (error) {
+            console.error(`Failed to process multicall results for token ${tokenAddress}:`, error);
+            // Add empty entry
+            positions.push({
+              address: tokenAddress,
+              deposits: BigInt(0),
+              shares: BigInt(0),
+              withdrawable: {
+                netAmount: BigInt(0),
+                grossAmount: BigInt(0),
+                principal: BigInt(0),
+                fees: BigInt(0),
+                exitFee: BigInt(0)
+              },
+              voteSelection: 0,
+              userBalance: BigInt(0),
+              userAllowance: BigInt(0)
+            });
+          }
+        }
       } catch (error) {
-        console.warn(`Failed to fetch user data for token ${token}:`, error);
-        // Add empty entry
-        positions.push({
-          token,
-          deposits: BigInt(0),
-          shares: BigInt(0),
-          withdrawable: {
-            netAmount: BigInt(0),
-            grossAmount: BigInt(0),
-            principal: BigInt(0),
-            fees: BigInt(0),
-            exitFee: BigInt(0)
-          },
-          voteSelection: 0,
-          userBalance: BigInt(0),
-          userAllowance: BigInt(0)
-        });
+        console.warn('Multicall failed for getUserPositions, falling back to individual calls:', error);
+        
+        // Fallback to original Promise.all approach
+        for (const tokenAddress of tokenAddresses) {
+          try {
+            const [totalLiquidity, totalShares, lpFee, managementFee,deposits, shares, withdrawable, voteSelection] = await Promise.all([
+              this.contract.totalLiquidity(tokenAddress),
+              this.contract.totalShares(tokenAddress),
+              this.contract.getEffectiveLPFee(tokenAddress),
+              this.contract.collectedManagementFees(tokenAddress),
+              this.contract.deposits(tokenAddress, userAddress),
+              this.contract.shares(tokenAddress, userAddress),
+              this.contract.getWithdrawableAmount(tokenAddress, userAddress),
+              this.contract.lpFeeAmountSelected(tokenAddress, userAddress)
+            ]);
+            
+            // Get user's balance and allowance for this token
+            const [userBalance, userAllowance] = await this.getUserTokenData(tokenAddress, userAddress);
+
+            positions.push({
+              address: tokenAddress,
+              totalLiquidity,
+              totalShares,
+              lpFee,
+              managementFee,
+              deposits,
+              shares,
+              withdrawable: {
+                netAmount: withdrawable[0],
+                grossAmount: withdrawable[1],
+                principal: withdrawable[2],
+                fees: withdrawable[3],
+                exitFee: withdrawable[4]
+              },
+              voteSelection: Number(voteSelection),
+              userBalance,
+              userAllowance
+            });
+          } catch (error) {
+            console.warn(`Failed to fetch user data for token ${tokenAddress}:`, error);
+            // Add empty entry
+            positions.push({
+              address: tokenAddress,
+              deposits: BigInt(0),
+              shares: BigInt(0),
+              withdrawable: {
+                netAmount: BigInt(0),
+                grossAmount: BigInt(0),
+                principal: BigInt(0),
+                fees: BigInt(0),
+                exitFee: BigInt(0)
+              },
+              voteSelection: 0,
+              userBalance: BigInt(0),
+              userAllowance: BigInt(0)
+            });
+          }
+        }
       }
-    }
     
     this.setCache(cacheKey, positions);
     return positions;
@@ -246,7 +489,10 @@ export class FlashLenderDataService {
   /**
    * Get governance data (votes and proposals) - automatically fetches deposited tokens from contract
    */
-  async getGovernanceData(feeOptions: number[] = [1, 25, 50, 100]) {
+  async getGovernanceData() {
+    // Fee options is an array of 1 to 100
+    const feeOptions = Array.from({length: 100}, (_, i) => i + 1);
+    
     try {
       // Fetch deposited tokens directly from contract
       const tokenAddresses = await this.contract.getDepositedTokens();
@@ -266,55 +512,124 @@ export class FlashLenderDataService {
           // Get current fee
           const currentFee = Number(await this.contract.getEffectiveLPFee(token));
           
+          // Phase 1: Use multicall for vote data collection
           const voteData = [];
-          const proposals = [];
           
-          // Get vote counts and proposals for each fee option
-          for (const fee of feeOptions) {
-            try {
-              const [votes, executionBlock] = await Promise.all([
-                this.contract.lpFeeSharesTotalVotes(token, fee),
-                this.contract.proposedFeeChanges(token, fee)
-            ]);
+          try {
+            // Prepare all multicall data for all 100 fees at once
+            const multicallCalls = feeOptions.map(fee => ({
+              target: this.contractAddress,
+              callData: MulticallService.encodeCall(
+                this.contract.interface,
+                'lpFeeSharesTotalVotes',
+                [token, fee]
+              ),
+              allowFailure: true,
+              contractInterface: this.contract.interface,
+              methodName: 'lpFeeSharesTotalVotes'
+            }));
+
             
-            voteData.push({ fee, votes });
+            // Execute multicall
+            const response = await this.multicallService.multicall(multicallCalls);
             
-            if (executionBlock > BigInt(0)) {
-              proposals.push({
-                token,
-                feeAmount: fee,
-                executionBlock,
-                currentBlock: BigInt(currentBlock),
-                canExecute: BigInt(currentBlock) >= executionBlock
-              });
+            // Process decoded results directly
+            for (let i = 0; i < feeOptions.length; i++) {
+              const fee = feeOptions[i];
+              const decodedResult = response.decoded[i];
+              
+              if (decodedResult && decodedResult[0] !== undefined) {
+                const votes = decodedResult[0];
+                voteData.push({ fee, votes });
+              } else {
+                voteData.push({ fee, votes: BigInt(0) });
+              }
             }
           } catch (error) {
-            console.warn(`Failed to fetch governance data for ${token} fee ${fee}:`, error);
-            voteData.push({ fee, votes: BigInt(0) });
+            console.warn(`Multicall failed for token ${token}, using fallback:`, error);
+            // Fallback to original Promise.all approach
+            const batchSize = 20;
+            
+            for (let batchIndex = 0; batchIndex < 10; batchIndex++) {
+              const batchStart = batchIndex * batchSize;
+              const batchEnd = batchStart + batchSize;
+              const batch = feeOptions.slice(batchStart, batchEnd);
+              
+              try {
+                const batchResults = await Promise.all(
+                  batch.map(async (fee) => {
+                    try {
+                      const votes = await this.contract.lpFeeSharesTotalVotes(token, fee);
+                      return { fee, votes };
+                    } catch (error) {
+                      console.warn(`Failed to fetch votes for ${token} fee ${fee}:`, error);
+                      return { fee, votes: BigInt(0) };
+                    }
+                  })
+                );
+                
+                voteData.push(...batchResults);
+                
+                // Small delay between batches to avoid overwhelming RPC
+                if (batchIndex < 9) {
+                  await new Promise(resolve => setTimeout(resolve, 10));
+                }
+              } catch (error) {
+                console.warn(`Failed to fetch batch ${batchIndex} for token ${token}:`, error);
+                batch.forEach(fee => voteData.push({ fee, votes: BigInt(0) }));
+              }
+            }
           }
+          
+          // Phase 2: Sort fees by vote count (highest to lowest)
+          voteData.sort((a, b) => {
+            const diff = b.votes - a.votes;
+            return diff > 0 ? 1 : diff < 0 ? -1 : 0;
+          });
+          
+          // Phase 3: Get execution block only for the fee with highest support
+          const proposals = [];
+          const topFee = voteData.find(vote => vote.votes > BigInt(0));
+          
+          if (topFee) {
+            try {
+              const executionBlock = await this.contract.proposedFeeChanges(token, topFee.fee);
+              
+              if (executionBlock > BigInt(0)) {
+                proposals.push({
+                  token,
+                  feeAmount: topFee.fee,
+                  executionBlock,
+                  currentBlock: BigInt(currentBlock),
+                  canExecute: BigInt(currentBlock) >= executionBlock
+                });
+              }
+            } catch (error) {
+              console.warn(`Failed to fetch execution block for ${token} fee ${topFee.fee}:`, error);
+            }
+          }
+          
+          governanceData.set(token, {
+            currentFee,
+            voteData,
+            proposals
+          });
+        } catch (error) {
+          console.warn(`Failed to fetch governance data for token ${token}:`, error);
+          governanceData.set(token, {
+            currentFee: 25, // default
+            voteData: feeOptions.map(fee => ({ fee, votes: BigInt(0) })),
+            proposals: []
+          });
         }
-        
-        governanceData.set(token, {
-          currentFee,
-          voteData,
-          proposals
-        });
-      } catch (error) {
-        console.warn(`Failed to fetch governance data for token ${token}:`, error);
-        governanceData.set(token, {
-          currentFee: 25, // default
-          voteData: feeOptions.map(fee => ({ fee, votes: BigInt(0) })),
-          proposals: []
-        });
       }
+      
+      return governanceData;
+    } catch (error) {
+      console.error('Failed to fetch governance data:', error);
+      return new Map();
     }
-    
-    return governanceData;
-  } catch (error) {
-    console.error('Failed to fetch governance data:', error);
-    return new Map();
   }
-}
 
   // ==================== EVENT LISTENING ====================
   
@@ -374,12 +689,30 @@ export class FlashLenderDataService {
     ];
     
     try {
-      const tokenContract = new Contract(tokenAddress, ERC20_ABI, this.provider);
+      // Use multicall for balance and allowance
+      const tokenInterface = new ethers.Interface(ERC20_ABI);
       
-      const [balance, allowance] = await Promise.all([
-        tokenContract.balanceOf(userAddress),
-        tokenContract.allowance(userAddress, this.contractAddress)
-      ]);
+      const multicallCalls = [
+        {
+          target: tokenAddress,
+          callData: MulticallService.encodeCall(tokenInterface, 'balanceOf', [userAddress]),
+          allowFailure: true,
+          contractInterface: tokenInterface,
+          methodName: 'balanceOf'
+        },
+        {
+          target: tokenAddress,
+          callData: MulticallService.encodeCall(tokenInterface, 'allowance', [userAddress, this.contractAddress]),
+          allowFailure: true,
+          contractInterface: tokenInterface,
+          methodName: 'allowance'
+        }
+      ];
+
+      const response = await this.multicallService.multicall(multicallCalls);
+      
+      const balance = response.decoded[0]?.[0] || BigInt(0);
+      const allowance = response.decoded[1]?.[0] || BigInt(0);
       
       return [balance, allowance];
     } catch (error) {
@@ -387,35 +720,144 @@ export class FlashLenderDataService {
       return [BigInt(0), BigInt(0)];
     }
   }
-  
+
   /**
-   * Enrich pool data with token metadata
+   * Get token metadata (symbol, name, decimals) for a single token
    */
-  private async enrichWithTokenMetadata(pools: TokenPoolData[]) {
+  private async getTokenMetadata(tokenAddress: string): Promise<{ symbol: string; name: string; decimals: number }> {
     const ERC20_ABI = [
       'function symbol() view returns (string)',
       'function decimals() view returns (uint8)',
       'function name() view returns (string)'
     ];
     
-    for (const pool of pools) {
-      try {
-        const tokenContract = new Contract(pool.address, ERC20_ABI, this.provider);
+    try {
+      // Use multicall for token metadata
+      const tokenInterface = new ethers.Interface(ERC20_ABI);
+      
+      const multicallCalls = [
+        {
+          target: tokenAddress,
+          callData: MulticallService.encodeCall(tokenInterface, 'symbol', []),
+          allowFailure: true,
+          contractInterface: tokenInterface,
+          methodName: 'symbol'
+        },
+        {
+          target: tokenAddress,
+          callData: MulticallService.encodeCall(tokenInterface, 'decimals', []),
+          allowFailure: true,
+          contractInterface: tokenInterface,
+          methodName: 'decimals'
+        },
+        {
+          target: tokenAddress,
+          callData: MulticallService.encodeCall(tokenInterface, 'name', []),
+          allowFailure: true,
+          contractInterface: tokenInterface,
+          methodName: 'name'
+        }
+      ];
+
+      const response = await this.multicallService.multicall(multicallCalls);
+      
+      const symbol = response.decoded[0]?.[0] || 'UNKNOWN';
+      const decimals = response.decoded[1]?.[0] || 18;
+      const name = response.decoded[2]?.[0] || 'Unknown Token';
+      
+      return { symbol, name, decimals };
+    } catch (error) {
+      console.warn(`Failed to fetch metadata for token ${tokenAddress}:`, error);
+      return { symbol: 'UNKNOWN', name: 'Unknown Token', decimals: 18 };
+    }
+  }
+  
+  /**
+   * Enrich pool data with token metadata
+   */
+  private async enrichWithTokenMetadata(pools: TokenPool[]) {
+    if (pools.length === 0) return;
+    
+    const ERC20_ABI = [
+      'function symbol() view returns (string)',
+      'function decimals() view returns (uint8)',
+      'function name() view returns (string)'
+    ];
+    
+    try {
+      
+      // Use multicall for all token metadata
+      const tokenInterface = new ethers.Interface(ERC20_ABI);
+      const multicallCalls = [];
+      
+      // Create 3 calls per token (symbol, decimals, name)
+      for (const pool of pools) {
+        multicallCalls.push(
+          {
+            target: pool.address,
+            callData: MulticallService.encodeCall(tokenInterface, 'symbol', []),
+            allowFailure: true,
+            contractInterface: tokenInterface,
+            methodName: 'symbol'
+          },
+          {
+            target: pool.address,
+            callData: MulticallService.encodeCall(tokenInterface, 'decimals', []),
+            allowFailure: true,
+            contractInterface: tokenInterface,
+            methodName: 'decimals'
+          },
+          {
+            target: pool.address,
+            callData: MulticallService.encodeCall(tokenInterface, 'name', []),
+            allowFailure: true,
+            contractInterface: tokenInterface,
+            methodName: 'name'
+          }
+        );
+      }
+
+      const response = await this.multicallService.multicall(multicallCalls);
+      
+      // Process results - 3 results per token
+      for (let i = 0; i < pools.length; i++) {
+        const pool = pools[i];
+        const baseIndex = i * 3;
         
-        const [symbol, decimals, name] = await Promise.all([
-          tokenContract.symbol().catch(() => 'UNKNOWN'),
-          tokenContract.decimals().catch(() => 18),
-          tokenContract.name().catch(() => 'Unknown Token')
-        ]);
-        
-        pool.symbol = symbol;
-        pool.decimals = decimals;
-        pool.name = name;
-      } catch (error) {
-        console.warn(`Failed to fetch metadata for token ${pool.address}:`, error);
-        pool.symbol = 'UNKNOWN';
-        pool.decimals = 18;
-        pool.name = 'Unknown Token';
+        try {
+          pool.symbol = response.decoded[baseIndex]?.[0] || 'UNKNOWN';
+          pool.decimals = response.decoded[baseIndex + 1]?.[0] || 18;
+          pool.name = response.decoded[baseIndex + 2]?.[0] || 'Unknown Token';
+        } catch (error) {
+          console.warn(`Failed to process metadata for token ${pool.address}:`, error);
+          pool.symbol = 'UNKNOWN';
+          pool.decimals = 18;
+          pool.name = 'Unknown Token';
+        }
+      }
+    } catch (error) {
+      console.warn('Multicall failed for enrichWithTokenMetadata, falling back to individual calls:', error);
+      
+      // Fallback to original approach
+      for (const pool of pools) {
+        try {
+          const tokenContract = new Contract(pool.address, ERC20_ABI, this.provider);
+          
+          const [symbol, decimals, name] = await Promise.all([
+            tokenContract.symbol().catch(() => 'UNKNOWN'),
+            tokenContract.decimals().catch(() => 18),
+            tokenContract.name().catch(() => 'Unknown Token')
+          ]);
+          
+          pool.symbol = symbol;
+          pool.decimals = decimals;
+          pool.name = name;
+        } catch (error) {
+          console.warn(`Failed to fetch metadata for token ${pool.address}:`, error);
+          pool.symbol = 'UNKNOWN';
+          pool.decimals = 18;
+          pool.name = 'Unknown Token';
+        }
       }
     }
   }

@@ -1,5 +1,5 @@
 import { useContext, useEffect } from 'react';
-import { AppContext } from '../context/AppContextProvider';
+import { AppContext } from '../context/AppContext';
 
 /**
  * Custom hook to track various aspects of app readiness

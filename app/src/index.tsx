@@ -8,7 +8,7 @@ import {
 import { networkConfig } from './utils/networkConfig';
 import App from './App';
 import { NotificationProvider } from './context/NotificationContext';
-import { AppContextProvider } from './context/AppContextProvider';
+import { AppContextProvider } from './context/AppContext';
 
 const queryClient = new QueryClient();
 

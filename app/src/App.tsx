@@ -10,7 +10,7 @@ import { useWagmiConnection } from './hooks/useWagmiConnection';
 import Loading from './components/common/Loading';
 import {
   LazyConnectWallet,
-  LazyDashboard,
+  LazyTokens,
   LazyWallet,
   LazyActivity,
   LazyPool,
@@ -20,6 +20,7 @@ import {
 } from './components/LazyComponents';
 import { NotificationProvider } from './context/NotificationContext';
 import { SettingsProvider, useTheme } from './context/SettingsContext';
+import { TokenProvider } from './context/TokensContext';
 import boltGreen from './assets/bolt_green.png';
 import boltWhite from './assets/bolt_green_border.png';
 import { darkTheme, lightTheme, RainbowKitProvider } from '@rainbow-me/rainbowkit';
@@ -27,7 +28,6 @@ import { darkTheme, lightTheme, RainbowKitProvider } from '@rainbow-me/rainbowki
 // Separate component that uses the theme context
 function AppContent() {
   const onAppReadyCallback = useCallback(async () => {
-    console.log('🎉 App is fully loaded and ready!');
   }, []);
 
   useOnAppReady(onAppReadyCallback);
@@ -39,25 +39,24 @@ function AppContent() {
   return (
     <RainbowKitProvider theme={isDarkMode ? darkTheme() : lightTheme()}>
       <Router>
-        {(!fullyReady || showLoading) ? (
-          <Loading />
-        ) : showConnectWallet ? (
-          <LazyConnectWallet />
-        ) : (
-          <div className="App">
-            {/* Side decoration bolts for wide screens */}
-            <div className="side-decoration left">
-              {!isDarkMode ? ( <img src={boltGreen} /> ) : ( <img src={boltWhite} /> )}
-            </div>
-            <div className="side-decoration right">
-              {!isDarkMode ? ( <img src={boltGreen} /> ) : ( <img src={boltWhite} /> )}
-            </div>
-            
+        <div className="App">
+          {/* Side decoration bolts for wide screens */}
+          <div className="side-decoration left">
+            {!isDarkMode ? ( <img src={boltGreen} /> ) : ( <img src={boltWhite} /> )}
+          </div>
+          <div className="side-decoration right">
+            {!isDarkMode ? ( <img src={boltGreen} /> ) : ( <img src={boltWhite} /> )}
+          </div>
+          {(!fullyReady || showLoading) ? (
+              <Loading />
+            ) : showConnectWallet ? (
+              <LazyConnectWallet />
+            ) : (
             <div className="app-content">
               <Navbar />
               <NotificationDisplay />
               <Routes>
-                <Route path="/" element={<LazyDashboard />} />
+                <Route path="/" element={<LazyTokens />} />
                 <Route path="/wallet/:userAddress" element={<LazyWallet />} />
                 <Route path="/activity/:userAddress" element={<LazyActivity />} />
                 <Route path="/pool/:tokenAddress" element={<LazyPool />} />
@@ -67,8 +66,8 @@ function AppContent() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </Router>
     </RainbowKitProvider>
   );
@@ -80,9 +79,9 @@ function App() {
     <ErrorBoundary>
       <NotificationProvider>
         <SettingsProvider>
-          <ErrorBoundary>
+          <TokenProvider>
             <AppContent />
-          </ErrorBoundary>
+          </TokenProvider>
         </SettingsProvider>
       </NotificationProvider>
     </ErrorBoundary>

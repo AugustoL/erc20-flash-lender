@@ -25,7 +25,6 @@ export const AppContextProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const checkResourcesLoaded = () => {
 
-      console.log("Checking resources loaded");
 
       // Check if all critical resources are loaded
       const images = Array.from(document.images);

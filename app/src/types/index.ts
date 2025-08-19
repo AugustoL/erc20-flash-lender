@@ -14,24 +14,25 @@ export interface Token {
   logoUrl?: string; // Optional URL for token logo
 }
 
+export interface TokenBalance extends Token {
+  userBalance: bigint;
+  userAllowance: bigint;
+}
+
 /**
  * Raw token pool data from blockchain
  */
-export interface TokenPoolData extends Token {
+export interface TokenPool extends Token {
   totalLiquidity: bigint;
   totalShares: bigint;
   lpFee: number; // in basis points
   managementFee: bigint;
-  apy?: number; // Annual Percentage Yield calculated from recent activity
-  // User-specific data when userAddress is provided
-  userBalance?: bigint;
-  userAllowance?: bigint;
 }
 
 /**
  * Raw user position data from blockchain
  */
-export interface UserPositionData extends Token {
+export interface UserPosition extends TokenPool, TokenBalance {
   deposits: bigint;
   shares: bigint;
   withdrawable: {
@@ -42,36 +43,6 @@ export interface UserPositionData extends Token {
     exitFee: bigint;
   };
   voteSelection: number;
-  // Token data for convenience
-  userBalance?: bigint;
-  userAllowance?: bigint;
-}
-
-/**
- * User settings for the application
- */
-export interface UserSettings {
-  apyCalculationBlocks: number; // Number of blocks to look back for APY calculation
-  theme?: 'light' | 'dark' | 'auto';
-}
-
-/**
- * Default user settings
- */
-export const DEFAULT_SETTINGS: UserSettings = {
-  apyCalculationBlocks: 1000,
-  theme: 'auto'
-};
-
-/**
- * Fee proposal data
- */
-export interface ProposalData {
-  pool: string;
-  feeAmount: number;
-  executionBlock: bigint;
-  currentBlock: bigint;
-  canExecute: boolean;
 }
 
 // ==================== FORMATTED UI TYPES ====================
@@ -79,11 +50,7 @@ export interface ProposalData {
 /**
  * Formatted pool data for UI consumption
  */
-export interface PoolData extends Token {
-  totalLiquidity: string;
-  totalShares: string;
-  lpFee: number;
-  managementFee: string;
+export interface PoolData extends TokenPool {
   apy?: number;
   formattedLiquidity?: string;
   // User-specific data when user is connected
@@ -96,24 +63,11 @@ export interface PoolData extends Token {
 /**
  * Formatted user position for UI consumption
  */
-export interface UserPosition {
-  token: Token;
-  deposits: string;
-  shares: string;
-  withdrawable: {
-    netAmount: string;
-    grossAmount: string;
-    principal: string;
-    fees: string;
-    exitFee: string;
-  };
-  voteSelection: number;
+export interface UserPositionData extends UserPosition {
   sharePercentage?: number;
   formattedDeposits?: string;
   formattedWithdrawable?: string;
   // Token data for convenience
-  userBalance?: string;
-  userAllowance?: string;
   formattedUserBalance?: string;
   needsApproval?: boolean; // Helper flag for UI
 }
@@ -122,13 +76,25 @@ export interface UserPosition {
  * Dashboard table row data
  */
 export interface TokenPoolRow extends Token {
-  tvl: string;
   loans: number; // placeholder until on-chain stat exists
   volume: string; // placeholder
   lpFeeBps: string;
+  tvl?: string;
+  tokenType?: string;
   apy?: number;
   hasUserDeposits?: boolean;
   // Status information
+  walletBalance?: string;
+  approvedAmount?: string;
+  depositedAmount?: string;
+}
+
+/**
+ * Wallet table row data
+ */
+export interface WalletTableRow extends Token {
+  poolExists?: boolean; // Whether the pool exists on-chain
+  tokenType?: string;
   walletBalance?: string;
   approvedAmount?: string;
   depositedAmount?: string;
@@ -245,6 +211,7 @@ export interface ActionModalProps {
   availableBalance?: string; // For deposit: wallet balance, for withdraw: withdrawable amount
   availableFees?: string; // For withdraw fees only option
   currentVoteFee?: number; // Current user's vote selection for fee
+  feeGovernance?: FeeVote[]; // Available fee options for voting
   onConfirm: (amount: string, feePercentage?: number, withdrawType?: WithdrawType) => void;
   isLoading?: boolean;
 }
@@ -302,6 +269,36 @@ export interface IAppContext {
   isHydrated: boolean;
 }
 
+/**
+ * Token context state interface
+ */
+export interface TokenContextState {
+  tokens: TokenBalance[];
+  isLoading: boolean;
+  error: string | null;
+}
+
+/**
+ * Token context type
+ */
+export interface TokenContextType extends TokenContextState {
+  addToken: (token: TokenBalance) => void;
+  removeToken: (address: string) => void;
+  updateToken: (address: string, updates: Partial<TokenBalance>) => void;
+  getToken: (address: string) => TokenBalance | undefined;
+  getAllTokens: () => TokenBalance[];
+  hasToken: (address: string) => boolean;
+  clearAllTokens: () => void;
+  loadTokensFromStorage: () => void;
+}
+
+/**
+ * Token provider props
+ */
+export interface TokenProviderProps {
+  children: React.ReactNode;
+}
+
 // ==================== HOOK CONFIGURATION TYPES ====================
 
 /**
@@ -314,3 +311,21 @@ export interface UseFlashLenderConfig {
   refreshInterval?: number;
   cacheTimeout?: number;
 }
+
+// ==================== SETTINGS TYPES ====================
+
+/**
+ * User settings for the application
+ */
+export interface UserSettings {
+  apyCalculationBlocks: number; // Number of blocks to look back for APY calculation
+  theme?: 'light' | 'dark' | 'auto';
+}
+
+/**
+ * Default user settings
+ */
+export const DEFAULT_SETTINGS: UserSettings = {
+  apyCalculationBlocks: 1000,
+  theme: 'auto'
+};
