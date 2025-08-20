@@ -33,8 +33,18 @@ const Navbar = () => {
         <ul>
           <li>
             <button 
+              onClick={() => navigate('/api')} 
+              className="navbar-toggle-btn"
+              aria-label="API & Docs"
+              title="API & Docs"
+            >
+              {"</>"}
+            </button>
+          </li>
+          <li>
+            <button 
               onClick={() => navigate('/help')} 
-              className="theme-toggle-btn"
+              className="navbar-toggle-btn"
               aria-label="Help"
               title="Help & Support"
             >
@@ -48,7 +58,7 @@ const Navbar = () => {
           <li>
             <button 
               onClick={() => navigate('/about')} 
-              className="theme-toggle-btn"
+              className="navbar-toggle-btn"
               aria-label="About"
               title="About"
             >
@@ -62,7 +72,7 @@ const Navbar = () => {
           <li>
             <button 
               onClick={() => goToSettings()} 
-              className="theme-toggle-btn"
+              className="navbar-toggle-btn"
               aria-label="Settings"
               title="Settings"
             >

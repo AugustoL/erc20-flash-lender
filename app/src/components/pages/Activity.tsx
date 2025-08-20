@@ -1,16 +1,24 @@
 import { useParams } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useChainId } from 'wagmi';
 import { ethers } from 'ethers';
 import { FlashLenderDataService } from '../../services/FlashLenderDataService';
 import { UserAction } from '../../types';
+import { hasContractsDeployed } from '../../utils/helpers';
+import NoContractsMessage from '../common/NoContractsMessage';
 
 export default function Activity() {
   const { userAddress } = useParams<{ userAddress: string }>();
-  const { chainId } = useAccount();
+  const chainId = useChainId();
+  const { chainId: accountChainId } = useAccount();
+
+  // Check if contracts are deployed on current network
+  if (!hasContractsDeployed(chainId)) {
+    return <NoContractsMessage pageName="Activity" />;
+  }
   
   // Get the current chain ID
-  const currentChainId = chainId || 31337; // Default to localhost if no chain
+  const currentChainId = accountChainId || 31337; // Default to localhost if no chain
   const [actions, setActions] = useState<UserAction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

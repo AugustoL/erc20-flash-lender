@@ -113,3 +113,29 @@ export const getTokenType = (chainId: number, tokenAddress: string, symbol: stri
   // Default fallback
   return 'ERC-20';
 };
+
+/**
+ * Check if contracts are deployed for a given chain ID
+ * @param chainId - The chain ID to check
+ * @returns true if ERC20FlashLender contract is deployed with a real address
+ */
+export function hasContractsDeployed(chainId: number): boolean {
+  try {
+    const { getContractAddress } = require('../config');
+    const flashLenderAddress = getContractAddress('ERC20FlashLender', chainId);
+    
+    // Check if we have a valid address (not null, undefined, or placeholder)
+    if (!flashLenderAddress) return false;
+    
+    // Check for common placeholder addresses
+    const placeholderAddresses = [
+      '0x1234567890123456789012345678901234567890',
+      '0x0000000000000000000000000000000000000000'
+    ];
+    
+    return !placeholderAddresses.includes(flashLenderAddress.toLowerCase());
+  } catch (error) {
+    console.warn('Error checking contract deployment:', error);
+    return false;
+  }
+}

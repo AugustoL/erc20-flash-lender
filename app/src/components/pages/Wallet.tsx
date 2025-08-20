@@ -1,3 +1,4 @@
+import { useChainId } from 'wagmi';
 import { useFlashLender } from '../../hooks/useFlashLender';
 import { NewTokenDepositModal, DiscoverTokensModal } from '../common/modal';
 import { useWalletRows } from '../../hooks/useWalletData';
@@ -6,10 +7,18 @@ import { useTokens } from '../../context';
 import { useWalletUtils } from '../../hooks/useWalletUtils';
 import { useModalManager } from '../../hooks/useModalManager';
 import { useTransactions } from '../../hooks/useTransactions';
+import { hasContractsDeployed } from '../../utils/helpers';
+import NoContractsMessage from '../common/NoContractsMessage';
 
 export default function Wallet() {
-  const { address, isConnected, provider, chainId } = useWalletUtils();
+  const chainId = useChainId();
+  const { address, isConnected, provider } = useWalletUtils();
   const { getAllTokens } = useTokens();
+
+  // Check if contracts are deployed on current network
+  if (!hasContractsDeployed(chainId)) {
+    return <NoContractsMessage pageName="Wallet" />;
+  }
   
   const {
     isDiscoverModalOpen,

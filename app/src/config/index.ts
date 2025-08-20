@@ -35,11 +35,11 @@ export interface Config {
 export function getConfig(): Config {
   if (
     LENDER_ADDRESS_LOCALHOST &&
-    jsonConfig.networks[1] &&
-    jsonConfig.networks[1].contracts &&
-    jsonConfig.networks[1].contracts[0]
+    jsonConfig.networks[0] &&
+    jsonConfig.networks[0].contracts &&
+    jsonConfig.networks[0].contracts[0]
   ) {
-    jsonConfig.networks[1].contracts[0].address = LENDER_ADDRESS_LOCALHOST;
+    jsonConfig.networks[0].contracts[0].address = LENDER_ADDRESS_LOCALHOST;
   }
   return jsonConfig;
 }

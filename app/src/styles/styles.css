@@ -156,7 +156,7 @@ body {
 }
 
 /* Theme Toggle Button */
-.theme-toggle-btn {
+.navbar-toggle-btn {
   background: transparent;
   border: 1px solid var(--border-color);
   color: var(--text-sec);
@@ -172,17 +172,17 @@ body {
   height: 36px;
 }
 
-.theme-toggle-btn:hover {
+.navbar-toggle-btn:hover {
   color: var(--text-primary);
   border-color: var(--accent);
   background: rgba(255, 255, 255, 0.05);
 }
 
-.theme-toggle-btn svg {
+.navbar-toggle-btn svg {
   transition: 0.25s ease;
 }
 
-.theme-toggle-btn:hover svg {
+.navbar-toggle-btn:hover svg {
   transform: rotate(15deg);
 }
 
@@ -2238,6 +2238,7 @@ body {
   font-size: 1.1rem;
   line-height: 1.6;
   max-width: 600px;
+  margin: auto;
 }
 
 .help-hero-subtitle {
@@ -2488,4 +2489,370 @@ body {
 
 .margin-0 {
   margin: 0 !important;
+}
+
+/* ==================== API DOCUMENTATION STYLES ==================== */
+
+.api-docs {
+  max-width: none;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.api-header {
+  text-align: center;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid var(--accent);
+}
+
+.api-header h2 {
+  color: var(--accent);
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+.api-subtitle {
+  color: var(--text-sec);
+  font-size: 1.1rem;
+  margin: 0;
+  font-weight: 400;
+}
+
+.api-section {
+  margin: 2rem 0;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(42, 42, 42, 0.8), rgba(54, 54, 54, 0.4));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-soft);
+}
+
+.api-section h3 {
+  color: var(--accent);
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.5rem;
+}
+
+.api-section h4 {
+  color: var(--accent-alt);
+  font-size: 1.2rem;
+  margin: 1.5rem 0 1rem 0;
+  font-weight: 500;
+}
+
+.api-section p {
+  color: var(--text-primary);
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.api-section ul {
+  color: var(--text-primary);
+  line-height: 1.6;
+  padding-left: 1.5rem;
+}
+
+.api-section li {
+  margin-bottom: 0.5rem;
+}
+
+.code-container {
+  position: relative;
+  margin: 1rem 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-pop);
+  border: 1px solid var(--accent);
+}
+
+.code-block {
+  background: linear-gradient(135deg, #1a1a1a, #0d0d0d);
+  color: #f8f8f2;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  padding: 1.5rem;
+  margin: 0;
+  overflow-x: auto;
+  border: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  
+  /* Syntax highlighting colors */
+  --keyword-color: #66d9ef;
+  --string-color: #a6e22e;
+  --comment-color: #75715e;
+  --number-color: #ae81ff;
+}
+
+.code-block::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--accent-grad);
+}
+
+/* Inline code styling */
+code {
+  background: rgba(0, 200, 83, 0.15);
+  color: var(--accent);
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--radius-xs);
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9em;
+  border: 1px solid rgba(0, 200, 83, 0.3);
+}
+
+/* Enhanced styling for important sections */
+.api-section:nth-child(odd) {
+  background: linear-gradient(135deg, rgba(54, 54, 54, 0.6), rgba(42, 42, 42, 0.3));
+}
+
+.api-section:hover {
+  border-color: var(--accent-alt);
+  box-shadow: 0 8px 32px -4px rgba(0, 200, 83, 0.2);
+  transition: all 0.3s ease;
+}
+
+/* Warning/Important sections */
+.api-section:has(h3:contains("⚠️")) {
+  border-color: var(--warning);
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.05));
+}
+
+/* Contract addresses styling */
+.network-contracts {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: rgba(64, 64, 64, 0.3);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--accent-alt);
+}
+
+.network-contracts h4 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: var(--accent-alt);
+  font-size: 1.1rem;
+}
+
+.contract-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.contract-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(42, 42, 42, 0.5);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(74, 74, 74, 0.5);
+  flex-wrap: wrap;
+}
+
+.contract-item strong {
+  color: var(--text-primary);
+  font-weight: 600;
+  min-width: 200px;
+  font-size: 0.9rem;
+}
+
+.address-code {
+  background: rgba(0, 200, 83, 0.2) !important;
+  color: var(--accent) !important;
+  padding: 0.4rem 0.6rem !important;
+  border-radius: var(--radius-xs) !important;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+  font-size: 0.85rem !important;
+  border: 1px solid rgba(0, 200, 83, 0.4) !important;
+  word-break: break-all;
+  flex: 1;
+  min-width: 300px;
+}
+
+.explorer-link {
+  color: var(--accent-alt);
+  text-decoration: none;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.8rem;
+  background: rgba(29, 233, 182, 0.1);
+  border: 1px solid rgba(29, 233, 182, 0.3);
+  border-radius: var(--radius-xs);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.explorer-link:hover {
+  background: rgba(29, 233, 182, 0.2);
+  border-color: var(--accent-alt);
+  transform: translateY(-1px);
+}
+
+.no-contracts {
+  color: var(--text-sec);
+  font-style: italic;
+  margin: 0;
+  padding: 1rem;
+  text-align: center;
+}
+
+.api-usage-note {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(0, 200, 83, 0.05), rgba(29, 233, 182, 0.05));
+  border: 1px solid rgba(0, 200, 83, 0.2);
+  border-radius: var(--radius-md);
+}
+
+.api-usage-note h4 {
+  margin-top: 0;
+  color: var(--accent);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .api-header h2 {
+    font-size: 1.6rem;
+  }
+  
+  .api-section {
+    padding: 1rem;
+    margin: 1.5rem 0;
+  }
+  
+  .code-block {
+    font-size: 0.8rem;
+    padding: 1rem;
+  }
+  
+  .contract-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .contract-item strong {
+    min-width: auto;
+  }
+  
+  .address-code {
+    min-width: auto !important;
+    width: 100%;
+    font-size: 0.75rem !important;
+  }
+  
+  .network-contracts {
+    padding: 0.75rem;
+  }
+}
+
+/* ==================== NO CONTRACTS MESSAGE STYLES ==================== */
+
+.no-contracts-message {
+  text-align: center;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.no-contracts-icon {
+  font-size: 4rem;
+  margin-bottom: 1.5rem;
+  opacity: 0.7;
+}
+
+.no-contracts-message h2 {
+  color: var(--warning);
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.no-contracts-message p {
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.no-contracts-actions {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.05));
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+
+.no-contracts-actions p {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.no-contracts-actions ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.no-contracts-actions li {
+  color: var(--text-primary);
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: rgba(42, 42, 42, 0.5);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--warning);
+  position: relative;
+  padding-left: 2rem;
+}
+
+.no-contracts-actions li::before {
+  content: "•";
+  position: absolute;
+  left: 1rem;
+  color: var(--warning);
+  font-weight: bold;
+}
+
+.no-contracts-actions a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--accent);
+}
+
+.no-contracts-actions a:hover {
+  color: var(--accent-alt);
+  border-bottom-color: var(--accent-alt);
+}
+
+/* Responsive design for no contracts message */
+@media (max-width: 768px) {
+  .no-contracts-message {
+    padding: 1rem;
+  }
+  
+  .no-contracts-icon {
+    font-size: 3rem;
+  }
+  
+  .no-contracts-message h2 {
+    font-size: 1.5rem;
+  }
+  
+  .no-contracts-actions {
+    padding: 1rem;
+  }
 }

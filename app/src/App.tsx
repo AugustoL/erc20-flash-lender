@@ -16,7 +16,8 @@ import {
   LazyPool,
   LazySettings,
   LazyHelp,
-  LazyAbout
+  LazyAbout,
+  LazyApi
 } from './components/LazyComponents';
 import { NotificationProvider } from './context/NotificationContext';
 import { SettingsProvider, useTheme } from './context/SettingsContext';
@@ -63,6 +64,7 @@ function AppContent() {
                 <Route path="/settings" element={<LazySettings />} />
                 <Route path="/help" element={<LazyHelp />} />
                 <Route path="/about" element={<LazyAbout />} />
+                <Route path="/api" element={<LazyApi />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </div>

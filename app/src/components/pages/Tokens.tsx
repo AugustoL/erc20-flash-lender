@@ -1,3 +1,4 @@
+import { useChainId } from 'wagmi';
 import { useFlashLender } from '../../hooks/useFlashLender';
 import { NewTokenDepositModal } from '../common/modal';
 import TokensTableRow from '../common/TokensTableRow';
@@ -5,9 +6,17 @@ import { useTokensRows } from '../../hooks/useTokensData';
 import { useWalletUtils } from '../../hooks/useWalletUtils';
 import { useModalManager } from '../../hooks/useModalManager';
 import { useTransactions } from '../../hooks/useTransactions';
+import { hasContractsDeployed } from '../../utils/helpers';
+import NoContractsMessage from '../common/NoContractsMessage';
 
 export default function Tokens() {
+  const chainId = useChainId();
   const { address, isConnected, provider } = useWalletUtils();
+
+  // Check if contracts are deployed on current network
+  if (!hasContractsDeployed(chainId)) {
+    return <NoContractsMessage pageName="Tokens" />;
+  }
   const { 
     isNewTokenModalOpen,
     isTransactionLoading,

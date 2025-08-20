@@ -4,3 +4,4 @@ export { default as Loading } from './Loading';
 export { default as Navbar } from './Navbar';
 export { default as NotificationDisplay } from './NotificationDisplay';
 export { default as TokenIcon } from './TokenIcon';
+export { default as NoContractsMessage } from './NoContractsMessage';

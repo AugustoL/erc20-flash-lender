@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
+import { useAccount, usePublicClient, useWalletClient, useChainId } from 'wagmi';
 import { ethers } from 'ethers';
 import { useFlashLender } from '../../hooks/useFlashLender';
 import { FlashLenderDataService } from '../../services/FlashLenderDataService';
@@ -8,6 +8,8 @@ import ActionModal, { ActionType } from '../common/modal/ActionModal';
 import ActivityList from '../common/ActivityList';
 import { useNotifications } from '../../context/NotificationContext';
 import { analyzeUserActions, isActionAllowed } from '../../utils/userActions';
+import { hasContractsDeployed } from '../../utils/helpers';
+import NoContractsMessage from '../common/NoContractsMessage';
 import {
   PoolData,
   UserPositionData,
@@ -19,7 +21,13 @@ import { useTokens } from '../../context/TokensContext';
 
 export default function Pool() {
   const { tokenAddress } = useParams<{ tokenAddress: string }>();
-  const { address, isConnected, chainId } = useAccount();
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+
+  // Check if contracts are deployed on current network
+  if (!hasContractsDeployed(chainId)) {
+    return <NoContractsMessage pageName="Pool" />;
+  }
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
   const [poolData, setPoolData] = useState<PoolData | null>(null);
