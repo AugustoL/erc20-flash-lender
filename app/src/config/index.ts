@@ -1,6 +1,4 @@
-import { IS_ENV_PRODUCTION } from '../utils/constants';
-import devConfig from './dev.json';
-import prodConfig from './prod.json';
+import jsonConfig from './config.json';
 import {
   mainnet,
   polygon,
@@ -10,6 +8,7 @@ import {
   hardhat
 } from 'wagmi/chains';
 import type { Chain } from 'wagmi/chains';
+import { LENDER_ADDRESS_LOCALHOST } from '../utils';
 
 export interface Contract {
   name: string;
@@ -31,14 +30,18 @@ export interface Config {
 }
 
 /**
- * Get the configuration based on the current environment
- * Returns dev config for development/localhost, prod config for production
+ * Get the configuration with the contracts and networks
  */
 export function getConfig(): Config {
-  // Check if we're in development mode
-  const isDevelopment = !IS_ENV_PRODUCTION;
-
-  return isDevelopment ? devConfig : prodConfig;
+  if (
+    LENDER_ADDRESS_LOCALHOST &&
+    jsonConfig.networks[1] &&
+    jsonConfig.networks[1].contracts &&
+    jsonConfig.networks[1].contracts[0]
+  ) {
+    jsonConfig.networks[1].contracts[0].address = LENDER_ADDRESS_LOCALHOST;
+  }
+  return jsonConfig;
 }
 
 /**
@@ -48,8 +51,9 @@ export function getConfig(): Config {
  * @returns Contract address or null if not found
  */
 export function getContractAddress(contractName: string, chainId: number): string | null {
-  const config = getConfig();
   
+  const config = getConfig();
+
   const network = config.networks.find(n => n.chainId === chainId);
   if (!network) {
     console.warn(`Network with chainId ${chainId} not found in config`);

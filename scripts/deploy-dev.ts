@@ -1,7 +1,5 @@
 import hre from "hardhat";
 import { ERC20FlashLender, MockERC20, ERC20FlashLoanExecutor } from "../typechain-types";
-import * as fs from "fs";
-import * as path from "path";
 import { deployMulticall3 } from "./deploy-multicall-hardhat";
 
 // Import actual Uniswap V2 contract ABIs
@@ -30,90 +28,10 @@ interface Config {
     networks: Network[];
 }
 
-// Function to read production config
-function readProductionConfig(): Config {
-    const configPath = path.join(__dirname, "../app/config/prod.json");
-    if (!fs.existsSync(configPath)) {
-        throw new Error(`Production config file not found at ${configPath}`);
-    }
-    
-    const configContent = fs.readFileSync(configPath, 'utf8');
-    return JSON.parse(configContent);
-}
-
-// Function to update development config
-function updateDevConfig(deployedContracts: { [key: string]: string }) {
-    const devConfigPath = path.join(__dirname, "../app/config/dev.json");
-    let devConfig: Config;
-    
-    // Read existing dev config
-    if (fs.existsSync(devConfigPath)) {
-        const devConfigContent = fs.readFileSync(devConfigPath, 'utf8');
-        devConfig = JSON.parse(devConfigContent);
-    } else {
-        throw new Error(`Development config file not found at ${devConfigPath}`);
-    }
-    
-    // Find localhost network (chainId 31337)
-    const localhostNetwork = devConfig.networks.find(network => network.chainId === 31337);
-    if (!localhostNetwork) {
-        throw new Error("Localhost network (chainId 31337) not found in development config");
-    }
-    
-    // Update contract addresses for localhost
-    localhostNetwork.contracts = localhostNetwork.contracts.map(contract => {
-        if (deployedContracts[contract.name]) {
-            return {
-                ...contract,
-                address: deployedContracts[contract.name],
-                version: "1.0.0-local" // Update version for local deployment
-            };
-        }
-        return contract;
-    });
-    
-    // Add new contracts if they don't exist
-    const existingContractNames = localhostNetwork.contracts.map(c => c.name);
-    
-    // Add additional contracts that might have been deployed
-    const additionalContracts = [
-        { name: "UniswapV2Factory1", key: "factory1" },
-        { name: "UniswapV2Router1", key: "router1" },
-        { name: "UniswapV2Factory2", key: "factory2" },
-        { name: "UniswapV2Router2", key: "router2" },
-        { name: "WETH9", key: "weth" }
-    ];
-    
-    additionalContracts.forEach(({ name, key }) => {
-        if (deployedContracts[key] && !existingContractNames.includes(name)) {
-            localhostNetwork.contracts.push({
-                name,
-                version: "1.0.0-local",
-                address: deployedContracts[key]
-            });
-        }
-    });
-    
-    // Write updated config back to file
-    fs.writeFileSync(devConfigPath, JSON.stringify(devConfig, null, 2));
-    console.log("✅ Development config updated with deployed contract addresses");
-}
-
 async function main() {
     console.log("🏠 Starting ERC20FlashLender DEVELOPMENT deployment...");
 
     await deployMulticall3();
-
-    // Read production config for reference
-    console.log("📖 Reading production configuration...");
-    try {
-        const prodConfig = readProductionConfig();
-        console.log("✅ Production config loaded successfully");
-        console.log(`📊 Found ${prodConfig.networks.length} networks in production config`);
-    } catch (error) {
-        console.warn("⚠️  Could not read production config:", (error as Error).message);
-        console.log("📝 Continuing with deployment...");
-    }
     
     const signers = await hre.ethers.getSigners();
     const [deployer, user1, user2, user3, user4, user5, user6, user7] = signers;
@@ -792,6 +710,9 @@ async function main() {
         await executeArbitrageUSDCDAI(executors[2].executor, executors[2].user, hre.ethers.parseUnits("750", 6), 4);
     }
 
+    // Set the interval for block mining
+    await hre.network.provider.send("evm_setIntervalMining", [5000]); // 5 seconds
+
     // Display development environment summary
     console.log("\n🎉 Development environment setup completed!");
     
@@ -862,14 +783,6 @@ async function main() {
         "weth": wethAddress
     };
 
-    // Update development configuration with deployed addresses
-    console.log("\n🔧 Updating development configuration...");
-    try {
-        updateDevConfig(deployedContracts);
-    } catch (error) {
-        console.warn("⚠️  Could not update development config:", (error as Error).message);
-    }
-
     return {
         lender: lenderAddress,
         tokens: deployedTokens.map(t => ({ symbol: t.symbol, address: t.address, decimals: t.decimals })),
@@ -906,7 +819,7 @@ main()
     .then((result) => {
         console.log("\n💾 Development Deployment Summary:");
         console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        console.log("Contract Address:", result.lender);
+        console.log("ERC20FlashLender Address:", result.lender);
         console.log("Network:", result.network);
         console.log("Management Fee:", result.managementFee / 100, "% of LP fee");
         console.log("Test Tokens:", result.tokens.length);

@@ -873,15 +873,6 @@ export default function Pool() {
                       <div className="stat-value-sm">
                         {userPosition.voteSelection ? `${(userPosition.voteSelection / 100).toFixed(2)}%` : 'No vote'}
                       </div>
-                      {userPosition.voteSelection && proposalStatus && (
-                        <div className="pool-proposal-status-note">
-                          {proposalStatus.canExecute 
-                            ? '✅ Ready to execute' 
-                            : proposalStatus.exists 
-                            ? `⏳ ${proposalStatus.blocksRemaining} blocks remaining`
-                            : '📝 Needs proposal'}
-                        </div>
-                      )}
                     </div>
                     {shouldShowChangeFeeButton() && (
                       <div className="row-actions center">

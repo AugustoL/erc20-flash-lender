@@ -28,32 +28,32 @@ stop_processes() {
 # Trap EXIT signal to ensure all processes are stopped
 trap stop_processes EXIT
 
+echo "Starting Complete Development Environment..."
+
 # Stop any existing processes first
 stop_processes
 
 echo ""
-echo "//---- Compiling and deploying contracts ----//"
-# Compile contracts and copy the ERC20FlashLender.json to the app directory
-npx hardhat compile
-cp artifacts/contracts/ERC20FlashLender.sol/ERC20FlashLender.json app/src/contracts/ERC20FlashLender.json
+echo "1️⃣  Starting Hardhat node and deploying contracts..."
+# Run dev-node.sh in the background
+./scripts/dev-node.sh &
+DEV_NODE_PID=$!
+
+# Wait for deployment to complete
+sleep 5
 
 echo ""
-echo "//---- Starting Hardhat node ----//"
-# Start the Hardhat node in the background
-npx hardhat node &
-HARDHAT_PID=$!
-
-# Wait a moment for Hardhat to start
-sleep 1
-
-# Run the Hardhat dev script
-npx hardhat --network localhost run scripts/deploy-dev.ts
+echo "2️⃣  Starting React application..."
+# Run dev-app.sh in the background
+./scripts/dev-app.sh &
+DEV_APP_PID=$!
 
 echo ""
-echo "✅ Development environment started!"
+echo "✅ Complete development environment started!"
 echo ""
 echo "📊 Services running:"
 echo "  • Hardhat Node:     http://localhost:8545"
+echo "  • React App:        http://localhost:3000"
 echo ""
 echo "Press Ctrl+C to stop all services..."
 

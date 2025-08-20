@@ -19,7 +19,9 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "dev": "sh scripts/dev-node.sh",
+    "dev": "sh scripts/dev-all.sh",
+    "dev-app": "sh scripts/dev-app.sh",
+    "dev-node": "sh scripts/dev-node.sh",
     "build": "hardhat compile",
     "test": "hardhat test",
     "test:coverage": "hardhat coverage",
