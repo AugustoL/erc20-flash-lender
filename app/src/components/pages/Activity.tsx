@@ -100,10 +100,11 @@ export default function Activity() {
     if (!metadata) return 'Unknown amount';
     
     try {
-      const formatted = parseFloat(amount) / Math.pow(10, metadata.decimals);
-      return `${formatted.toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 6
+      const formatted = ethers.formatUnits(amount, metadata.decimals);
+      const numericValue = parseFloat(formatted);
+      return `${numericValue.toLocaleString('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2
       })} ${metadata.symbol}`;
     } catch {
       return 'Invalid amount';
