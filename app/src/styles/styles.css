@@ -2757,6 +2757,89 @@ code {
   }
 }
 
+/* ==================== FOOTER STYLES ==================== */
+
+.app-footer {
+  padding: 12px 24px;
+  border-top: 1px solid var(--border-color);
+  background: rgba(30, 30, 30, 0.3);
+  backdrop-filter: blur(8px);
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+}
+
+.footer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.footer-left {
+  display: flex;
+  align-items: center;
+}
+
+.footer-link {
+  color: var(--text-sec);
+  text-decoration: none;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  transition: all 0.2s ease;
+}
+
+.footer-link:hover {
+  color: var(--accent);
+  background: rgba(0, 200, 83, 0.1);
+}
+
+.footer-version {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--text-sec);
+}
+
+.version-label {
+  color: var(--text-sec);
+  font-weight: 500;
+}
+
+.commit-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  padding: 2px 6px;
+  background: rgba(0, 200, 83, 0.1);
+  border-radius: var(--radius-xs);
+  border: 1px solid rgba(0, 200, 83, 0.2);
+  transition: all 0.2s ease;
+}
+
+.commit-link:hover {
+  background: rgba(0, 200, 83, 0.2);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+
+.light-theme .app-footer {
+  background: rgba(240, 240, 240, 0.8);
+}
+
+/* Add bottom padding to prevent content from being hidden behind fixed footer */
+.app-content {
+  padding-bottom: 60px; /* Adjust based on footer height */
+}
+
 /* ==================== NO CONTRACTS MESSAGE STYLES ==================== */
 
 .no-contracts-message {

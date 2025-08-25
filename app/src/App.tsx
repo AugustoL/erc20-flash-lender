@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useCallback } from 'react';
 import Navbar from './components/common/Navbar';
+import Footer from './components/common/Footer';
 import NotificationDisplay from './components/common/NotificationDisplay';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import './styles/styles.css';
@@ -67,6 +68,7 @@ function AppContent() {
                 <Route path="/api" element={<LazyApi />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              <Footer />
             </div>
           )}
         </div>

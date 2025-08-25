@@ -33,16 +33,6 @@ const Navbar = () => {
         <ul>
           <li>
             <button 
-              onClick={() => navigate('/api')} 
-              className="navbar-toggle-btn"
-              aria-label="API & Docs"
-              title="API & Docs"
-            >
-              {"</>"}
-            </button>
-          </li>
-          <li>
-            <button 
               onClick={() => navigate('/help')} 
               className="navbar-toggle-btn"
               aria-label="Help"

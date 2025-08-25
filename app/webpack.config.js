@@ -3,6 +3,18 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const DotenvWebpackPlugin = require('dotenv-webpack');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const webpack = require('webpack');
+const { execSync } = require('child_process');
+const packageJson = require('./package.json');
+
+// Get git commit hash
+function getCommitHash() {
+  try {
+    return execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
+  } catch (error) {
+    console.warn('Could not get git commit hash:', error.message);
+    return 'development';
+  }
+}
 
 module.exports = {
   entry: path.resolve(__dirname, 'src', 'index.tsx'),
@@ -66,5 +78,10 @@ module.exports = {
     }),
     new DotenvWebpackPlugin(),
     new webpack.HotModuleReplacementPlugin(),
+    new webpack.DefinePlugin({
+      'process.env.REACT_APP_COMMIT_HASH': JSON.stringify(process.env.REACT_APP_COMMIT_HASH || getCommitHash()),
+      'process.env.REACT_APP_GITHUB_REPO': JSON.stringify(process.env.REACT_APP_GITHUB_REPO || 'https://github.com/AugustoL/erc20-flash-lender'),
+      'process.env.REACT_APP_VERSION': JSON.stringify(process.env.REACT_APP_VERSION || packageJson.version)
+    })
   ]
 };
