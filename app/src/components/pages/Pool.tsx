@@ -9,6 +9,7 @@ import ActivityList from '../common/ActivityList';
 import { useNotifications } from '../../context/NotificationContext';
 import { analyzeUserActions, isActionAllowed } from '../../utils/userActions';
 import { hasContractsDeployed } from '../../utils/helpers';
+import { MINIMUM_FRACTION_DIGITS, MAXIMUM_FRACTION_DIGITS } from '../../utils/constants';
 import NoContractsMessage from '../common/NoContractsMessage';
 import {
   PoolData,
@@ -255,7 +256,8 @@ export default function Pool() {
   const formatAmount = useCallback((amount: string, decimals: number = 18, symbol: string = '') => {
     try {
       const formatted = Number(ethers.formatUnits(amount, decimals)).toLocaleString(undefined, { 
-        maximumFractionDigits: 4 
+        minimumFractionDigits: MINIMUM_FRACTION_DIGITS,
+        maximumFractionDigits: MAXIMUM_FRACTION_DIGITS 
       });
       return `${formatted} ${symbol}`;
     } catch {
@@ -632,7 +634,7 @@ export default function Pool() {
                   </div>
                   <div className="stat-value">
                     {poolData.totalShares && poolData.decimals 
-                      ? Number(ethers.formatUnits(poolData.totalShares, poolData.decimals)).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                      ? Number(ethers.formatUnits(poolData.totalShares, poolData.decimals)).toLocaleString(undefined, { minimumFractionDigits: MINIMUM_FRACTION_DIGITS, maximumFractionDigits: MAXIMUM_FRACTION_DIGITS })
                       : 'N/A'
                     }
                   </div>
@@ -832,7 +834,7 @@ export default function Pool() {
                       </div>
                       <div className="stat-value-sm">
                         {userPosition.deposits && poolData.decimals
-                          ? `${Number(ethers.formatUnits(userPosition.deposits, poolData.decimals)).toLocaleString(undefined, { maximumFractionDigits: 4 })} ${poolData.symbol || 'Tokens'}`
+                          ? `${Number(ethers.formatUnits(userPosition.deposits, poolData.decimals)).toLocaleString(undefined, { minimumFractionDigits: MINIMUM_FRACTION_DIGITS, maximumFractionDigits: MAXIMUM_FRACTION_DIGITS })} ${poolData.symbol || 'Tokens'}`
                           : 'N/A'
                         }
                       </div>
@@ -856,7 +858,7 @@ export default function Pool() {
                       </div>
                       <div className="stat-value-green">
                         {userPosition.withdrawable?.netAmount && poolData.decimals
-                          ? `${Number(ethers.formatUnits(userPosition.withdrawable.netAmount, poolData.decimals)).toLocaleString(undefined, { maximumFractionDigits: 4 })} ${poolData.symbol || 'Tokens'}`
+                          ? `${Number(ethers.formatUnits(userPosition.withdrawable.netAmount, poolData.decimals)).toLocaleString(undefined, { minimumFractionDigits: MINIMUM_FRACTION_DIGITS, maximumFractionDigits: MAXIMUM_FRACTION_DIGITS })} ${poolData.symbol || 'Tokens'}`
                           : 'N/A'
                         }
                       </div>
@@ -868,7 +870,7 @@ export default function Pool() {
                       </div>
                       <div className="stat-value-accent">
                         {userPosition.withdrawable?.fees && poolData.decimals
-                          ? `${Number(ethers.formatUnits(userPosition.withdrawable.fees, poolData.decimals)).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${poolData.symbol || 'Tokens'}`
+                          ? `${Number(ethers.formatUnits(userPosition.withdrawable.fees, poolData.decimals)).toLocaleString(undefined, { minimumFractionDigits: MINIMUM_FRACTION_DIGITS, maximumFractionDigits: MAXIMUM_FRACTION_DIGITS })} ${poolData.symbol || 'Tokens'}`
                           : '0'
                         }
                       </div>

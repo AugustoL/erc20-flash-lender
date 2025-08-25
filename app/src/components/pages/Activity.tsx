@@ -5,6 +5,7 @@ import { ethers } from 'ethers';
 import { FlashLenderDataService } from '../../services/FlashLenderDataService';
 import { UserAction } from '../../types';
 import { hasContractsDeployed } from '../../utils/helpers';
+import { MINIMUM_FRACTION_DIGITS, MAXIMUM_FRACTION_DIGITS } from '../../utils/constants';
 import NoContractsMessage from '../common/NoContractsMessage';
 
 export default function Activity() {
@@ -103,8 +104,8 @@ export default function Activity() {
       const formatted = ethers.formatUnits(amount, metadata.decimals);
       const numericValue = parseFloat(formatted);
       return `${numericValue.toLocaleString('en-US', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2
+        minimumFractionDigits: MINIMUM_FRACTION_DIGITS,
+        maximumFractionDigits: MAXIMUM_FRACTION_DIGITS
       })} ${metadata.symbol}`;
     } catch {
       return 'Invalid amount';

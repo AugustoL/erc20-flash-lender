@@ -5,6 +5,7 @@ import { FlashLenderDataService } from '../services/FlashLenderDataService';
 import { useSettings } from '../context/SettingsContext';
 import { useTokens } from '../context';
 import { getERC20FlashLenderAddress } from '../config';
+import { MINIMUM_FRACTION_DIGITS, MAXIMUM_FRACTION_DIGITS } from '../utils/constants';
 import {
   UseFlashLenderConfig,
   PoolData,
@@ -57,8 +58,8 @@ export function useFlashLender({
   const formatWithSymbol = useCallback((amount: string, symbol?: string): string => {
     const num = parseFloat(amount);
     const formatted = num.toLocaleString('en-US', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2
+      minimumFractionDigits: MINIMUM_FRACTION_DIGITS,
+      maximumFractionDigits: MAXIMUM_FRACTION_DIGITS
     });
     return symbol ? `${formatted} ${symbol}` : formatted;
   }, []);

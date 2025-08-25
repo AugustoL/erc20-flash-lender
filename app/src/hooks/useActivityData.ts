@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { ethers } from 'ethers';
+import { MINIMUM_FRACTION_DIGITS, MAXIMUM_FRACTION_DIGITS } from '../utils/constants';
 
 /**
  * Hook for formatting token amounts with memoization
@@ -8,7 +9,8 @@ export const useTokenFormatter = (decimals: number = 18, symbol: string = '') =>
   const formatAmount = useCallback((amount: string): string => {
     try {
       const formatted = Number(ethers.formatUnits(amount, decimals)).toLocaleString(undefined, { 
-        maximumFractionDigits: 4 
+        minimumFractionDigits: MINIMUM_FRACTION_DIGITS,
+        maximumFractionDigits: MAXIMUM_FRACTION_DIGITS 
       });
       return `${formatted} ${symbol}`;
     } catch {
