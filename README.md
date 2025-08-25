@@ -637,17 +637,27 @@ npm run verify:mainnet    # Verify on Mainnet
 
 ### Development Environment Setup
 
-For local development and testing, use the development deployment script:
+The project provides three development scripts for different workflows:
 
+#### Option 1: Full Development Environment (Recommended)
 ```bash
-# Terminal 1: Start Hardhat node
-npm run node
-
-# Terminal 2: Deploy development environment
-npm run deploy:dev
+npm run dev
 ```
+Runs the complete development stack - compiles contracts, starts Hardhat node, deploys contracts, and launches the React app.
 
-The development deployment script (`deploy-dev.ts`) will:
+#### Option 2: App Development Only
+```bash
+npm run dev:app
+```
+Starts only the React development server. Use this when developing frontend features with the GitHub Pages deployed contracts.
+
+#### Option 3: Local Node Only
+```bash
+npm run dev:node
+```
+Starts only the Hardhat node with deployed contracts. Use this to connect the GitHub Pages app to your local blockchain for testing.
+
+The full development script (`npm run dev`) will:
 
 - 🏦 Deploy the ERC20FlashLender contract
 - 🪙 Deploy 4 test tokens (TUSDC, TDAI, TWETH, TWBTC) with different decimals
@@ -689,17 +699,14 @@ The project includes a comprehensive React-based decentralized application (DApp
 ### 🚀 Quick Start (Frontend)
 
 ```bash
-# Navigate to app directory
-cd app
+# Option 1: Full development environment (recommended)
+npm run dev
 
-# Install dependencies
-npm install
+# Option 2: Frontend development only (uses GitHub Pages contracts)
+npm run dev:app
 
-# Start development server
-npm start
-
-# Build for production
-npm run build
+# Option 3: Build for production
+cd app && npm run build
 ```
 
 ### 📁 DApp Architecture
@@ -721,12 +728,24 @@ app/
 
 ### 🔧 Configuration
 
-The DApp automatically detects your network and connects to the appropriate contracts. For local development:
+The DApp automatically detects your network and connects to the appropriate contracts. 
 
-1. Start the Hardhat node: `npm run node`
-2. Deploy contracts: `npm run deploy:dev`
-3. Start the React app: `cd app && npm start`
-4. Connect MetaMask to localhost:8545
+**For full local development:**
+```bash
+npm run dev  # All-in-one: compile, deploy, and start app
+```
+
+**For frontend-only development:**
+```bash
+npm run dev:app  # Uses GitHub Pages deployed contracts
+```
+
+**For testing GitHub Pages app with local blockchain:**
+```bash
+npm run dev:node  # Start local node, then use GitHub Pages app
+```
+
+Connect MetaMask to localhost:8545 when using local development options.
 
 ### 📖 DApp Documentation
 
