@@ -1333,8 +1333,8 @@ body {
 /* Light Theme Override */
 .light-theme {
   /* Light Theme DeFi Palette */
-  --bg-gradient: radial-gradient(circle at 20% 20%, #FAFAFA 0%, #F0F0F0 70%);
-  --panel: #F0F0F0;
+  --bg-gradient: radial-gradient(circle at 20% 20%, #F0F0F0 0%, #E0E0E0 70%);
+  --panel: #E0E0E0;
   --panel-alt: #E8E8E8;
   --surface-2: #FFFFFF;
   --accent: #00A542;
