@@ -1,5 +1,22 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useCallback } from 'react';
+
+// Detect if we're running on GitHub Pages and get the correct basename
+function getBasename(): string {
+  const { hostname, pathname } = window.location;
+  
+  // Check if we're on GitHub Pages
+  if (hostname.includes('github.io')) {
+    // Extract repo name from pathname (first segment after domain)
+    const pathSegments = pathname.split('/').filter(Boolean);
+    if (pathSegments.length > 0) {
+      return `/${pathSegments[0]}`;
+    }
+  }
+  
+  // For local development or custom domains, no basename needed
+  return '';
+}
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
 import NotificationDisplay from './components/common/NotificationDisplay';
@@ -40,7 +57,7 @@ function AppContent() {
 
   return (
     <RainbowKitProvider theme={isDarkMode ? darkTheme() : lightTheme()}>
-      <Router>
+      <Router basename={getBasename()}>
         <div className="App">
           {/* Side decoration bolts for wide screens */}
           <div className="side-decoration left">
