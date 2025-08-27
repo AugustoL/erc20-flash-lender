@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { ENVIRONMENT } from '../../utils/constants';
 
 interface FooterProps {
   className?: string;
@@ -37,6 +38,9 @@ const Footer: React.FC<FooterProps> = ({ className = '' }) => {
           >
             {appVersion} {formattedCommitHash}
           </a>
+          {ENVIRONMENT !== 'production' && (
+            <span className="commit-link">{ENVIRONMENT}</span>
+          )}
         </div>
       </div>
     </footer>
