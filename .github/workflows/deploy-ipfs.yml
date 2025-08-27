@@ -24,10 +24,8 @@ jobs:
         working-directory: ./app
 
       - name: Build
-        run: npm run build
+        run: REACT_APP_ENVIRONMENT=production npm run build
         working-directory: ./app
-        env:
-          REACT_APP_ENVIRONMENT: production
 
       - name: Setup IPFS
         uses: ibnesayeed/setup-ipfs@master
