@@ -31,16 +31,16 @@ jobs:
         run: npm run build
         working-directory: ./app
 
-      - name: Setup IPFS
-        uses: ibnesayeed/setup-ipfs@master
-        with:
-          ipfs_version: ^0.12.0
-
-      - name: Deploy to IPFS
+      - name: Deploy to IPFS via Pinata
+        uses: aquiladev/ipfs-action@v0.3.1
         id: ipfs
+        with:
+          path: ./app/dist
+          service: pinata
+          pinataKey: ${{ secrets.PINATA_API_KEY }}
+          pinataSecret: ${{ secrets.PINATA_SECRET_API_KEY }}
+
+      - name: Output IPFS Hash
         run: |
-          ipfs add -r ./app/dist --pin=true --quieter > ipfs_hash.txt
-          HASH=$(cat ipfs_hash.txt)
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
-          echo "IPFS Hash: $HASH"
-          echo "IPFS URL: https://ipfs.io/ipfs/$HASH"
+          echo "IPFS Hash: ${{ steps.ipfs.outputs.hash }}"
+          echo "IPFS URL: https://gateway.pinata.cloud/ipfs/${{ steps.ipfs.outputs.hash }}"
