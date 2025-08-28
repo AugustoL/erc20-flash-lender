@@ -61,7 +61,7 @@ const WalletTokenRow = React.memo<WalletTokenRowProps>(({
         </div>
       </td>
       <td onClick={handleRowClick} className="center">{tokenType}</td>
-      <td onClick={handleRowClick} className="center">
+      <td onClick={handleRowClick} className="center-content">
         <div className="status-info">
           {isConnected && address ? (
             <div className="row-status-info">

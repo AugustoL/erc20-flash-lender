@@ -45,7 +45,7 @@ const TokensTableRow = React.memo<TokensTableRowProps>(({
       <td className="center">{row.tvl}</td>
       <td className="center">{row.apy !== undefined && row.apy !== null ? `${row.apy.toFixed(2)}%` : '0%'}</td>
       <td className="center">{row.lpFeeBps}%</td>
-      <td className="center">
+      <td className="center-content">
         <div className="status-info">
           {isConnected && address ? (
             <div className="row-status-info">

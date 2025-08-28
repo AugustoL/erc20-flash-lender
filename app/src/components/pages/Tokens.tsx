@@ -124,7 +124,7 @@ export default function Tokens() {
                 <th className="center">TVL</th>
                 <th className="center">APY</th>
                 <th className="center">LP Fee</th>
-                <th className="center">Status</th>
+                <th className="center-content">Status</th>
               </tr>
             </thead>
             <tbody>

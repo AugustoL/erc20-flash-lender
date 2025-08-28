@@ -125,7 +125,7 @@ export default function Wallet() {
               <tr>
                 <th>Asset</th>
                 <th className="center">Type</th>
-                <th className="center">Status</th>
+                <th className="center-content">Status</th>
                 <th className="center">Actions</th>
               </tr>
             </thead>
