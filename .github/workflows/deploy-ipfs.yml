@@ -23,8 +23,12 @@ jobs:
         run: npm ci
         working-directory: ./app
 
+      - name: Create .env file
+        run: echo "REACT_APP_ENVIRONMENT=production" > .env
+        working-directory: ./app
+
       - name: Build
-        run: REACT_APP_ENVIRONMENT=production npm run build
+        run: npm run build
         working-directory: ./app
 
       - name: Setup IPFS

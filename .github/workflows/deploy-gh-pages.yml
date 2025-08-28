@@ -32,10 +32,14 @@ jobs:
         run: npm ci
         working-directory: ./app
 
-      - name: Build
-        run: REACT_APP_ENVIRONMENT=staging npm run build
+      - name: Create .env file
+        run: echo "REACT_APP_ENVIRONMENT=staging" > .env
         working-directory: ./app
 
+      - name: Build
+        run: npm run build
+        working-directory: ./app
+        
       - name: Setup Pages
         uses: actions/configure-pages@v4
 

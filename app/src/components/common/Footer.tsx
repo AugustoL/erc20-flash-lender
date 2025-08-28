@@ -17,7 +17,7 @@ const Footer: React.FC<FooterProps> = ({ className = '' }) => {
   const appVersion = process.env.REACT_APP_VERSION || '0.1.0';
   
   // Get the GitHub repository URL from package.json or environment
-  const repoUrl = process.env.REACT_APP_GITHUB_REPO || 'https://github.com/your-username/erc20Loan';
+  const repoUrl = process.env.REACT_APP_GITHUB_REPO || 'https://github.com/AugustoL/erc20Loan';
   
   return (
     <footer className={`app-footer ${className}`}>
