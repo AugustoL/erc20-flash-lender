@@ -1,10 +1,12 @@
-name: Build and Deploy to IPFS
+name: Hash production build
 
 on:
+  push:
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,15 +33,3 @@ jobs:
           
       - name: Build Production
         run: ./scripts/build-production.sh
-        
-      - name: Install action dependencies
-        run: |
-          cd .github/actions/deploy-ipfs
-          npm install
-        
-      - name: Deploy to IPFS
-        uses: ./.github/actions/deploy-ipfs
-        with:
-          pinata-jwt: ${{ secrets.PINATA_JWT }}
-          source-dir: './app/dist'
-          pin-name: 'flashlender - ${{ github.sha }}'

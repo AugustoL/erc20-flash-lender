@@ -24,9 +24,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: './app/package-lock.json'
+      
+      - name: Update npm to v11
+        run: npm install -g npm@11
 
       - name: Install dependencies
         run: npm ci

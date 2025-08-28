@@ -6,24 +6,15 @@ const webpack = require('webpack');
 const { execSync } = require('child_process');
 const packageJson = require('./package.json');
 
-// Get git commit hash
-function getCommitHash() {
-  try {
-    return execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
-  } catch (error) {
-    console.warn('Could not get git commit hash:', error.message);
-    return 'development';
-  }
-}
-
 module.exports = {
   entry: path.resolve(__dirname, 'src', 'index.tsx'),
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.js',
-    clean: true
+    clean: true,
+    charset: false
   },
-  mode: 'development',
+  mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
   devServer: {
     static: path.resolve(__dirname, 'public'),
     historyApiFallback: true,
@@ -61,6 +52,31 @@ module.exports = {
   resolve: {
     extensions: ['.tsx', '.ts', '.js', '.jsx']
   },
+  optimization: {
+    moduleIds: 'deterministic',
+    chunkIds: 'deterministic',
+    minimize: true,
+    minimizer: [
+      new (require('terser-webpack-plugin'))({
+        terserOptions: {
+          mangle: {
+            safari10: true,
+            reserved: []
+          },
+          compress: {
+            drop_console: false,
+            drop_debugger: false,
+            passes: 1
+          },
+          format: {
+            comments: false
+          }
+        },
+        parallel: false,
+        extractComments: false
+      })
+    ]
+  },
   plugins: [
     new HtmlWebpackPlugin({
       template: path.resolve(__dirname, 'public', 'index.html')
@@ -77,9 +93,9 @@ module.exports = {
       ]
     }),
     new DotenvWebpackPlugin(),
-    new webpack.HotModuleReplacementPlugin(),
+    ...(process.env.NODE_ENV !== 'production' ? [new webpack.HotModuleReplacementPlugin()] : []),
     new webpack.DefinePlugin({
-      'process.env.REACT_APP_COMMIT_HASH': JSON.stringify(process.env.REACT_APP_COMMIT_HASH || getCommitHash()),
+      'process.env.REACT_APP_COMMIT_HASH': JSON.stringify(process.env.REACT_APP_COMMIT_HASH),
       'process.env.REACT_APP_GITHUB_REPO': JSON.stringify(process.env.REACT_APP_GITHUB_REPO || 'https://github.com/AugustoL/erc20-flash-lender'),
       'process.env.REACT_APP_VERSION': JSON.stringify(process.env.REACT_APP_VERSION || packageJson.version)
     })
