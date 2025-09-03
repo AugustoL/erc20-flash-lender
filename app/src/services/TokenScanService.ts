@@ -22,46 +22,99 @@ export class TokenScanService {
     try {
       const toBlock = await this.provider.getBlockNumber();
       const paddedUserAddress = ethers.zeroPadValue(userAddress, 32);
+      const MAX_BLOCK_RANGE = 10000;
       
-      // Create two separate filters - one for when user sends, one for when user receives
-      const outgoingTransferFilter = {
-        topics: [
-          ERC20_TRANSFER_SIGNATURE,
-          paddedUserAddress, // user is sender (from)
-          null // any receiver (to)
-        ],
-        fromBlock,
-        toBlock
-      };
-
-      const incomingTransferFilter = {
-        topics: [
-          ERC20_TRANSFER_SIGNATURE,
-          null, // any sender (from)
-          paddedUserAddress // user is receiver (to)
-        ],
-        fromBlock,
-        toBlock
-      };
-
-      // Get logs from both filters
-      const [outgoingLogs, incomingLogs] = await Promise.all([
-        this.provider.getLogs(outgoingTransferFilter),
-        this.provider.getLogs(incomingTransferFilter)
-      ]);
-      
-      // Combine and extract unique token addresses from the logs
       const tokenAddresses = new Set<string>();
       
-      for (const log of [...outgoingLogs, ...incomingLogs]) {
-        tokenAddresses.add(log.address.toLowerCase());
+      // Calculate the total range and split into batches if needed
+      const totalBlocks = toBlock - fromBlock + 1;
+      
+      if (totalBlocks <= MAX_BLOCK_RANGE) {
+        // Single batch - process normally
+        const [outgoingLogs, incomingLogs] = await this.scanBlockRange(
+          paddedUserAddress, 
+          fromBlock, 
+          toBlock
+        );
+        
+        for (const log of [...outgoingLogs, ...incomingLogs]) {
+          tokenAddresses.add(log.address.toLowerCase());
+        }
+      } else {
+        // Multiple batches - split the range
+        const batches = Math.ceil(totalBlocks / MAX_BLOCK_RANGE);
+        console.log(`Scanning ${totalBlocks} blocks in ${batches} batches of max ${MAX_BLOCK_RANGE} blocks each`);
+        
+        for (let i = 0; i < batches; i++) {
+          const batchFromBlock = fromBlock + (i * MAX_BLOCK_RANGE);
+          const batchToBlock = Math.min(batchFromBlock + MAX_BLOCK_RANGE - 1, toBlock);
+          
+          console.log(`Scanning batch ${i + 1}/${batches}: blocks ${batchFromBlock} to ${batchToBlock}`);
+          
+          try {
+            const [outgoingLogs, incomingLogs] = await this.scanBlockRange(
+              paddedUserAddress,
+              batchFromBlock,
+              batchToBlock
+            );
+            
+            for (const log of [...outgoingLogs, ...incomingLogs]) {
+              tokenAddresses.add(log.address.toLowerCase());
+            }
+            
+            // Small delay between batches to avoid rate limiting
+            if (i < batches - 1) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          } catch (error) {
+            console.warn(`Error scanning batch ${i + 1}/${batches} (blocks ${batchFromBlock}-${batchToBlock}):`, error);
+            // Continue with next batch instead of failing entirely
+          }
+        }
       }
 
+      console.log(`Found ${tokenAddresses.size} unique token addresses across ${totalBlocks} blocks`);
       return Array.from(tokenAddresses);
     } catch (error) {
       console.error('Error scanning for tokens:', error);
       return [];
     }
+  }
+
+  /**
+   * Scan a specific block range for ERC20 transfer events
+   */
+  private async scanBlockRange(
+    paddedUserAddress: string, 
+    fromBlock: number, 
+    toBlock: number
+  ): Promise<[any[], any[]]> {
+    // Create two separate filters - one for when user sends, one for when user receives
+    const outgoingTransferFilter = {
+      topics: [
+        ERC20_TRANSFER_SIGNATURE,
+        paddedUserAddress, // user is sender (from)
+        null // any receiver (to)
+      ],
+      fromBlock,
+      toBlock
+    };
+
+    const incomingTransferFilter = {
+      topics: [
+        ERC20_TRANSFER_SIGNATURE,
+        null, // any sender (from)
+        paddedUserAddress // user is receiver (to)
+      ],
+      fromBlock,
+      toBlock
+    };
+
+    // Get logs from both filters
+    return await Promise.all([
+      this.provider.getLogs(outgoingTransferFilter),
+      this.provider.getLogs(incomingTransferFilter)
+    ]);
   }
 
   /**
