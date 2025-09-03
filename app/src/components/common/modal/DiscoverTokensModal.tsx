@@ -23,7 +23,7 @@ export default function DiscoverTokensModal({
   const [isSearching, setIsSearching] = useState(false);
   const [currentBlock, setCurrentBlock] = useState<number>(0);
   const publicClient = usePublicClient();
-  const { address: userAddress } = useAccount();
+  const { address: userAddress, chainId } = useAccount();
   const { addToken, hasToken } = useTokens();
 
   // Get current block number when modal opens
@@ -76,7 +76,8 @@ export default function DiscoverTokensModal({
       const tokenScanService = new TokenScanService(scanProvider);
       
       // Get the flash lender contract address for allowance checking
-      const spenderAddress = getERC20FlashLenderAddress(31337) || ''; // Default to localhost chain
+      const currentChainId = chainId || 31337; // Default to localhost if no chain
+      const spenderAddress = getERC20FlashLenderAddress(currentChainId) || '';
       
       // Scan for tokens and add new ones with positive balance
       await tokenScanService.scanAndAddTokens(
