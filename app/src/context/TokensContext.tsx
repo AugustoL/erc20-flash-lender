@@ -88,9 +88,11 @@ const tokenReducer = (state: TokensContextState, action: TokenAction): TokensCon
 
 // ==================== STORAGE UTILITIES ====================
 
-const STORAGE_KEY = 'erc20-lender-tokens';
+const getStorageKey = (chainId?: number) => {
+  return chainId ? `erc20-lender-tokens-${chainId}` : 'erc20-lender-tokens';
+};
 
-const saveTokensToStorage = (tokens: TokenBalance[]): void => {
+const saveTokensToStorage = (tokens: TokenBalance[], chainId?: number): void => {
   try {
     // Convert BigInt values to strings for JSON serialization
     const serializedTokens = tokens.map(token => ({
@@ -107,15 +109,15 @@ const saveTokensToStorage = (tokens: TokenBalance[]): void => {
       return value;
     });
     
-    localStorage.setItem(STORAGE_KEY, jsonString);
+    localStorage.setItem(getStorageKey(chainId), jsonString);
   } catch (error) {
     console.error('Failed to save tokens to localStorage:', error);
   }
 };
 
-const loadTokensFromStorage = (): TokenBalance[] => {
+const loadTokensFromStorage = (chainId?: number): TokenBalance[] => {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(getStorageKey(chainId));
     if (!stored) return [];
     
     const parsed = JSON.parse(stored);
@@ -140,7 +142,7 @@ const loadTokensFromStorage = (): TokenBalance[] => {
   } catch (error) {
     console.error('Failed to load tokens from localStorage:', error);
     // Clear corrupted data
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(getStorageKey(chainId));
     return [];
   }
 };
@@ -153,27 +155,31 @@ const TokensContext = createContext<TokensContextType | undefined>(undefined);
 
 export interface TokenProviderProps {
   children: React.ReactNode;
+  chainId?: number;
 }
 
-export const TokenProvider: React.FC<TokenProviderProps> = ({ children }) => {
+export const TokenProvider: React.FC<TokenProviderProps> = ({ children, chainId }) => {
   const [state, dispatch] = useReducer(tokenReducer, {
     tokens: [],
     isLoading: false,
     error: null
   });
 
-  // Load tokens from localStorage on mount
+  // Load tokens from localStorage on mount and when chainId changes
   useEffect(() => {
-    const storedTokens = loadTokensFromStorage();
+    const storedTokens = loadTokensFromStorage(chainId);
     dispatch({ type: 'SET_TOKENS', payload: storedTokens });
-  }, []);
+  }, [chainId]);
 
   // Save tokens to localStorage whenever tokens change
   useEffect(() => {
     if (state.tokens.length > 0) {
-      saveTokensToStorage(state.tokens);
+      saveTokensToStorage(state.tokens, chainId);
+    } else {
+      // Clear storage if no tokens
+      localStorage.removeItem(getStorageKey(chainId));
     }
-  }, [state.tokens]);
+  }, [state.tokens, chainId]);
 
   // ==================== CONTEXT METHODS ====================
 
@@ -207,13 +213,13 @@ export const TokenProvider: React.FC<TokenProviderProps> = ({ children }) => {
 
   const clearAllTokens = useCallback(() => {
     dispatch({ type: 'CLEAR_TOKENS' });
-    localStorage.removeItem(STORAGE_KEY);
-  }, []);
+    localStorage.removeItem(getStorageKey(chainId));
+  }, [chainId]);
 
   const loadTokensFromStorageManual = useCallback(() => {
-    const storedTokens = loadTokensFromStorage();
+    const storedTokens = loadTokensFromStorage(chainId);
     dispatch({ type: 'SET_TOKENS', payload: storedTokens });
-  }, []);
+  }, [chainId]);
 
   // ==================== CONTEXT VALUE ====================
 

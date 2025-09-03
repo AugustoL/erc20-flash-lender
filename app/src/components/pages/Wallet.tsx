@@ -15,6 +15,20 @@ export default function Wallet() {
   const { address, isConnected, provider } = useWalletUtils();
   const { getAllTokens } = useTokens();
 
+  // Show loading while chain ID is not available
+  if (!chainId) {
+    return (
+      <div className="dash-container">
+        <div className="card surface">
+          <div className="card-head"><h3>WALLET TOKENS</h3></div>
+          <div className="tokens-loading-container">
+            <div>Connecting to network...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Check if contracts are deployed on current network
   if (!hasContractsDeployed(chainId)) {
     return <NoContractsMessage pageName="Wallet" />;
@@ -23,7 +37,6 @@ export default function Wallet() {
   const {
     isDiscoverModalOpen,
     isNewTokenModalOpen,
-    currentAction,
     selectedToken,
     isTransactionLoading,
     openDiscoverModal,

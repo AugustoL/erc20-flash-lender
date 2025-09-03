@@ -5,6 +5,7 @@ import {
   optimism,
   arbitrum,
   base,
+  sepolia,
   hardhat
 } from 'wagmi/chains';
 import type { Chain } from 'wagmi/chains';
@@ -21,7 +22,6 @@ export interface Network {
   name: string;
   currency: string;
   explorerUrl: string;
-  publicProviders: string[];
   contracts: Contract[];
 }
 
@@ -33,9 +33,11 @@ export interface Config {
  * Get the configuration with the contracts and networks
  */
 export function getConfig(): Config {
+  // Only apply localhost override when actually on localhost
   if (
     LENDER_ADDRESS_LOCALHOST &&
     jsonConfig.networks[0] &&
+    jsonConfig.networks[0].chainId === 31337 &&
     jsonConfig.networks[0].contracts &&
     jsonConfig.networks[0].contracts[0]
   ) {
@@ -122,6 +124,7 @@ export function getSupportedChains(): Chain[] {
     10: optimism,
     42161: arbitrum,
     8453: base,
+    11155111: sepolia,
     31337: hardhat
   };
 

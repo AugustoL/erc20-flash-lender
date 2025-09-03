@@ -26,7 +26,7 @@ export class FlashLenderDataService {
   private contractAddress: string;
   private onTokenDiscovered?: (token: TokenBalance) => void;
   
-  constructor(chainId?: number, onTokenDiscovered?: (token: TokenBalance) => void) {
+  constructor(chainId: number, onTokenDiscovered?: (token: TokenBalance) => void) {
     // Create provider from current environment
     this.provider = this.createProvider();
     
@@ -34,11 +34,10 @@ export class FlashLenderDataService {
     this.onTokenDiscovered = onTokenDiscovered;
     
     // Get contract address for the current chain
-    const currentChainId = chainId || 31337; // Default to localhost
-    const contractAddress = getERC20FlashLenderAddress(currentChainId);
+    const contractAddress = getERC20FlashLenderAddress(chainId);
     
     if (!contractAddress) {
-      throw new Error(`No contract address found for chain ${currentChainId}`);
+      throw new Error(`No contract address found for chain ${chainId}`);
     }
     
     this.contractAddress = contractAddress;
@@ -57,28 +56,13 @@ export class FlashLenderDataService {
    * Create an ethers provider from the current environment
    */
   private createProvider(): ethers.Provider {
-    // Try to use window.ethereum if available (browser environment)
+    // Always try to use window.ethereum if available (browser environment)
     if (typeof window !== 'undefined' && window.ethereum) {
       return new ethers.BrowserProvider(window.ethereum);
     }
     
-    // For development, try different localhost URLs
-    const rpcUrls = [
-      'http://localhost:8545',
-      'http://127.0.0.1:8545',
-    ];
-    
-    // Try each URL and return the first working one
-    for (const url of rpcUrls) {
-      try {
-        return new ethers.JsonRpcProvider(url);
-      } catch (error) {
-        console.warn(`Failed to connect to ${url}:`, error);
-      }
-    }
-    
-    // Fallback to default localhost
-    return new ethers.JsonRpcProvider('http://localhost:8545');
+    // Fallback for non-browser environments (testing, SSR, etc.)
+    throw new Error('No wallet provider available. Please connect your wallet.');
   }
   
   /**

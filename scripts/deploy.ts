@@ -1,5 +1,5 @@
 import hre from "hardhat";
-import { ERC20FlashLender } from "../typechain-types";
+import { ERC20FlashLender, ERC20FlashLoanExecutorFactory } from "../typechain-types";
 
 async function main() {
     console.log("🚀 Starting ERC20FlashLender deployment...");
@@ -30,7 +30,7 @@ async function main() {
     await lender.waitForDeployment();
     
     const lenderAddress = await lender.getAddress();
-    console.log("✅ Contract deployed to:", lenderAddress);
+    console.log("✅ ERC20FlashLender deployed to:", lenderAddress);
 
     // Initialize the contract
     console.log("\\n🔧 Initializing contract...");
@@ -64,6 +64,15 @@ async function main() {
     console.log("  - Entry/Exit Fee:", entryExitFee.toString(), "wei");
     console.log("  - Owner:", owner);
 
+    // Deploy the executor factory
+    console.log("\\n📦 Deploying ERC20FlashLoanExecutorFactory...");
+    const ERC20FlashLoanExecutorFactory = await hre.ethers.getContractFactory("ERC20FlashLoanExecutorFactory");
+    const factory = await ERC20FlashLoanExecutorFactory.deploy(lenderAddress) as ERC20FlashLoanExecutorFactory;
+    await factory.waitForDeployment();
+    
+    const factoryAddress = await factory.getAddress();
+    console.log("✅ ERC20FlashLoanExecutorFactory deployed to:", factoryAddress);
+
     // Estimate gas for basic operations
     console.log("\\n⛽ Gas Estimates:");
     try {
@@ -83,14 +92,15 @@ async function main() {
         console.log("\\n📋 Contract Verification:");
         console.log(`npx hardhat verify --network ${network} ${lenderAddress}`);
         console.log("Note: This contract uses an initializer, no constructor arguments needed");
+        console.log(`npx hardhat verify --network ${network} ${factoryAddress} ${lenderAddress}`);
     }
 
-    // Transfer ownership if multisig is provided
-    if (process.env.MULTISIG_OWNER && process.env.MULTISIG_OWNER !== "0x0000000000000000000000000000000000000000") {
-        console.log("\\n👥 Transferring ownership to multisig...");
-        const transferTx = await lender.transferOwnership(process.env.MULTISIG_OWNER);
+    // Transfer ownership if owner is provided
+    if (process.env.CONTRACT_OWNER && process.env.CONTRACT_OWNER !== "0x0000000000000000000000000000000000000000") {
+        console.log("\\n👤 Transferring ownership...");
+        const transferTx = await lender.transferOwnership(process.env.CONTRACT_OWNER);
         await transferTx.wait();
-        console.log("✅ Ownership transferred to:", process.env.MULTISIG_OWNER);
+        console.log("✅ Ownership transferred to:", process.env.CONTRACT_OWNER);
     }
 
     console.log("\\n🎉 Deployment completed successfully!");
@@ -102,12 +112,12 @@ async function main() {
     console.log("4. 🗳️  Configure LP governance (fee voting system is already active)");
     console.log("5. 🛡️  Consider additional security measures:");
     console.log("   - Time locks for admin functions");
-    console.log("   - Multisig for ownership");
     console.log("   - Monitor for precision attack attempts");
     console.log("   - Set up alerts for unusual deposit/withdrawal patterns");
 
     return {
         lender: lenderAddress,
+        factory: factoryAddress,
         deployer: deployer.address,
         network: network,
         managementFee: managementFeePercentage
@@ -118,7 +128,8 @@ async function main() {
 main()
     .then((result) => {
         console.log("\\n💾 Deployment Summary:");
-        console.log("Contract Address:", result.lender);
+        console.log("ERC20FlashLender:", result.lender);
+        console.log("ERC20FlashLoanExecutorFactory:", result.factory);
         console.log("Deployer:", result.deployer);
         console.log("Network:", result.network);
         console.log("Management Fee:", result.managementFee / 100, "% of LP fee");

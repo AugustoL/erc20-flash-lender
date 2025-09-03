@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useCallback } from 'react';
+import { useChainId } from 'wagmi';
 
 // Detect if we're running on GitHub Pages and get the correct basename
 function getBasename(): string {
@@ -94,15 +95,24 @@ function AppContent() {
   );
 }
 
+// Component that provides TokenProvider with chainId
+function AppWithTokenProvider() {
+  const chainId = useChainId();
+  
+  return (
+    <TokenProvider chainId={chainId}>
+      <AppContent />
+    </TokenProvider>
+  );
+}
+
 // Main App component that provides the theme context
 function App() {
   return (
     <ErrorBoundary>
       <NotificationProvider>
         <SettingsProvider>
-          <TokenProvider>
-            <AppContent />
-          </TokenProvider>
+          <AppWithTokenProvider />
         </SettingsProvider>
       </NotificationProvider>
     </ErrorBoundary>

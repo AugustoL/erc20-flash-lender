@@ -13,6 +13,7 @@ import {
 } from '../types';
 
 export function useFlashLender({
+  provider,
   userAddress,
   autoRefresh = false,
   refreshInterval = 30000,
@@ -21,8 +22,8 @@ export function useFlashLender({
   // Get chain ID from wagmi
   const { chainId } = useAccount();
   
-  // Use current chain ID (defaults to localhost if no chain)
-  const currentChainId = chainId || 31337;
+  // Don't default to localhost - wait for proper chain ID
+  const currentChainId = chainId;
   
   // Get settings for APY calculation
   const { settings } = useSettings();
@@ -39,6 +40,11 @@ export function useFlashLender({
 
   // Initialize service (with error handling)
   const service = useMemo(() => {
+    // Don't initialize service if chainId is undefined
+    if (!currentChainId) {
+      return null;
+    }
+    
     try {
       const svc = new FlashLenderDataService(currentChainId, addToken);
       svc.setCacheTimeout(cacheTimeout);
@@ -139,6 +145,12 @@ export function useFlashLender({
 
   // Main fetch function
   const fetchData = useCallback(async () => {
+    if (!currentChainId) {
+      // Chain ID not available yet - keep loading state
+      setIsLoading(true);
+      return;
+    }
+    
     if (!service) {
       console.warn('Service not available - contract address not found');
       setIsLoading(false);
@@ -223,7 +235,11 @@ export function useFlashLender({
       throw new Error('Service not initialized');
     }
     
-    // Get contract address from service
+    // Get contract address from service  
+    if (!currentChainId) {
+      throw new Error('Chain ID not available');
+    }
+    
     const contractAddress = getERC20FlashLenderAddress(currentChainId);
     if (!contractAddress) {
       throw new Error(`Contract address not found for chain ${currentChainId}`);
@@ -254,7 +270,6 @@ export function useFlashLender({
     const amountBigInt = ethers.parseUnits(amount, pool?.decimals || 18);
     
     // Check if approval is needed
-    const userAddress = await signer.getAddress();
     const currentAllowance = pool?.userAllowance ? BigInt(pool.userAllowance) : BigInt(0);
     
     if (currentAllowance < amountBigInt) {
