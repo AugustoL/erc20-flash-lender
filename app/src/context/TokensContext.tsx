@@ -42,8 +42,8 @@ const tokenReducer = (state: TokensContextState, action: TokenAction): TokensCon
       return { ...state, error: action.payload };
     
     case 'SET_TOKENS':
-      return { ...state, tokens: action.payload, error: null };
-    
+      return { ...state, tokens: action.payload };
+
     case 'ADD_TOKEN': {
       const existingIndex = state.tokens.findIndex(
         token => token.address.toLowerCase() === action.payload.address.toLowerCase()
@@ -109,7 +109,8 @@ const saveTokensToStorage = (tokens: TokenBalance[], chainId?: number): void => 
       return value;
     });
     
-    localStorage.setItem(getStorageKey(chainId), jsonString);
+    const storageKey = getStorageKey(chainId);
+    localStorage.setItem(storageKey, jsonString);
   } catch (error) {
     console.error('Failed to save tokens to localStorage:', error);
   }
@@ -117,8 +118,11 @@ const saveTokensToStorage = (tokens: TokenBalance[], chainId?: number): void => 
 
 const loadTokensFromStorage = (chainId?: number): TokenBalance[] => {
   try {
-    const stored = localStorage.getItem(getStorageKey(chainId));
-    if (!stored) return [];
+    const storageKey = getStorageKey(chainId);
+    const stored = localStorage.getItem(storageKey);
+    if (!stored) {
+      return [];
+    }
     
     const parsed = JSON.parse(stored);
     
@@ -171,15 +175,31 @@ export const TokenProvider: React.FC<TokenProviderProps> = ({ children, chainId 
     dispatch({ type: 'SET_TOKENS', payload: storedTokens });
   }, [chainId]);
 
-  // Save tokens to localStorage whenever tokens change
+  // Save tokens to localStorage whenever tokens change (but only after initial load)
   useEffect(() => {
-    if (state.tokens.length > 0) {
-      saveTokensToStorage(state.tokens, chainId);
-    } else {
-      // Clear storage if no tokens
-      localStorage.removeItem(getStorageKey(chainId));
+    
+    const storedTokens = loadTokensFromStorage(chainId);
+    
+    // Merge and deduplicate tokens (state tokens take precedence over stored ones)
+    const tokenMap = new Map();
+    
+    // Add stored tokens first
+    storedTokens.forEach(token => {
+      tokenMap.set(token.address.toLowerCase(), token);
+    });
+    
+    // Add/overwrite with state tokens (more recent data)
+    state.tokens.forEach(token => {
+      tokenMap.set(token.address.toLowerCase(), token);
+    });
+    
+    const mergedTokens = Array.from(tokenMap.values());
+
+    // Only save if the merged tokens are more to the ones saved
+    if (mergedTokens.length > storedTokens.length) {
+      saveTokensToStorage(mergedTokens, chainId);
     }
-  }, [state.tokens, chainId]);
+  }, [state.tokens]);
 
   // ==================== CONTEXT METHODS ====================
 

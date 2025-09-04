@@ -40,8 +40,11 @@ export const useWalletRows = (userPositions: UserPositionData[] = [], savedToken
       });
     });
 
-    savedTokens.forEach(token => {
-      if ((token.userBalance > 0) && (rows.findIndex(row => row.address === token.address) === -1)) {
+    savedTokens.forEach(token => {      
+      const tokenAlreadyExists = rows.findIndex(row => row.address === token.address) !== -1;
+      const hasPositiveBalance = token.userBalance > 0;
+      
+      if (hasPositiveBalance && !tokenAlreadyExists) {
         rows.push({
           poolExists: pools.some(pool => pool.address === token.address),
           address: token.address,
