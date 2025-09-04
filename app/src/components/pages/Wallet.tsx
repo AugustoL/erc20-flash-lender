@@ -1,4 +1,5 @@
 import { useChainId } from 'wagmi';
+import { useEffect } from 'react';
 import { useFlashLender } from '../../hooks/useFlashLender';
 import { NewTokenDepositModal, DiscoverTokensModal } from '../common/modal';
 import { useWalletRows } from '../../hooks/useWalletData';
@@ -7,7 +8,9 @@ import { useTokens } from '../../context';
 import { useWalletUtils } from '../../hooks/useWalletUtils';
 import { useModalManager } from '../../hooks/useModalManager';
 import { useTransactions } from '../../hooks/useTransactions';
+import { useTokenSync } from '../../hooks/useTokenSync';
 import { hasContractsDeployed } from '../../utils/helpers';
+import { getERC20FlashLenderAddress } from '../../config';
 import NoContractsMessage from '../common/NoContractsMessage';
 
 export default function Wallet() {
@@ -47,6 +50,7 @@ export default function Wallet() {
   } = useModalManager();
   
   const { executeNewTokenTransaction } = useTransactions();
+  const { syncMultipleTokens } = useTokenSync();
 
   const {
     pools,
@@ -61,14 +65,32 @@ export default function Wallet() {
     refreshInterval: 30000
   });
   const savedTokens = getAllTokens();
+  
+  // Sync all saved token balances and allowances when wallet connects or chain changes
+  useEffect(() => {
+    if (isConnected && provider && chainId && savedTokens.length > 0) {
+      const spenderAddress = getERC20FlashLenderAddress(chainId);
+      const tokenAddresses = savedTokens.map(token => token.address);
+      syncMultipleTokens(tokenAddresses, provider, spenderAddress).catch(error => {
+        console.warn('Failed to sync token balances on wallet load:', error);
+      });
+    }
+  }, [isConnected, provider, chainId, savedTokens.length, syncMultipleTokens]);
+  
   // Transform pools data into table rows format using optimized hook
   const rows = useWalletRows(userPositions, savedTokens, pools);
 
   const handleNewTokenConfirm = async (tokenAddress: string, amount: string, tokenInfo: { symbol: string; name: string; decimals: number }) => {
     setTransactionLoading(true);
-    
     try {
       await executeNewTokenTransaction('deposit', tokenAddress, amount, tokenInfo);
+      
+      // Sync token balances and allowances after successful transaction
+      if (provider && chainId) {
+        const spenderAddress = getERC20FlashLenderAddress(chainId);
+        await syncMultipleTokens([tokenAddress], provider, spenderAddress);
+      }
+      
       closeNewTokenModal();
     } catch (error) {
       setTransactionLoading(false);
@@ -80,6 +102,13 @@ export default function Wallet() {
     
     try {
       await executeNewTokenTransaction('approve', tokenAddress, amount, { symbol: '', name: '', decimals: 18 });
+      
+      // Sync token allowances after successful approval
+      if (provider && chainId) {
+        const spenderAddress = getERC20FlashLenderAddress(chainId);
+        await syncMultipleTokens([tokenAddress], provider, spenderAddress);
+      }
+      
       setTransactionLoading(false);
     } catch (error) {
       setTransactionLoading(false);

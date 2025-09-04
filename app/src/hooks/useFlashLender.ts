@@ -6,6 +6,7 @@ import { useSettings } from '../context/SettingsContext';
 import { useTokens } from '../context';
 import { getERC20FlashLenderAddress } from '../config';
 import { MINIMUM_FRACTION_DIGITS, MAXIMUM_FRACTION_DIGITS } from '../utils/constants';
+import { safeFormatUnits, safeParseUnits } from '../utils/helpers';
 import {
   UseFlashLenderConfig,
   PoolData,
@@ -58,7 +59,7 @@ export function useFlashLender({
 
   // Format utilities - These are stable and don't need dependencies
   const formatTokenAmount = useCallback((amount: bigint, decimals: number = 18): string => {
-    return ethers.formatUnits(amount, decimals);
+    return safeFormatUnits(amount, decimals);
   }, []);
 
   const formatWithSymbol = useCallback((amount: string, symbol?: string): string => {
@@ -264,19 +265,34 @@ export function useFlashLender({
   const deposit = useCallback(async (
     tokenAddress: string,
     amount: string,
-    signer: ethers.Signer
+    signer: ethers.Signer,
+    tokenDecimals?: number
   ) => {
     const pool = pools.find(p => p.address === tokenAddress);
-    const amountBigInt = ethers.parseUnits(amount, pool?.decimals || 18);
     
+    // Use provided decimals, then pool decimals, then fetch from token contract
+    let decimals = tokenDecimals || pool?.decimals;
+    
+    if (!decimals) {
+      // For new tokens, fetch decimals from the contract
+      try {
+        const tokenMetadata = await (service as any).getTokenMetadata(tokenAddress);
+        decimals = tokenMetadata.decimals;
+      } catch (error) {
+        console.warn(`Failed to fetch decimals for ${tokenAddress}, using 18:`, error);
+        decimals = 18;
+      }
+    }
+    
+    const amountBigInt = safeParseUnits(amount, decimals);
+    const userAddress = await signer.getAddress();
     // Check if approval is needed
-    const currentAllowance = pool?.userAllowance ? BigInt(pool.userAllowance) : BigInt(0);
-    
-    if (currentAllowance < amountBigInt) {
+    const [, userAllowance] = await (service as any).getUserTokenData(tokenAddress, userAddress);
+
+    if (userAllowance < amountBigInt) {
       // Auto-approve the required amount
       await approve(tokenAddress, amount, signer);
     }
-    
     // Then deposit
     const contractWithSigner = (service as any).contract.connect(signer);
     const depositTx = await contractWithSigner.deposit(tokenAddress, amountBigInt);

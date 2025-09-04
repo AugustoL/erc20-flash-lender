@@ -54,7 +54,7 @@ export const useTransactions = () => {
           
         case 'deposit':
           if (!amount) throw new Error('Amount is required for deposit');
-          await hookDeposit(tokenAddress, amount, signer);
+          await hookDeposit(tokenAddress, amount, signer, selectedPool?.decimals);
           addNotification(`Successfully deposited ${amount} ${tokenSymbol || selectedPool?.symbol}!`, 'success');
           break;
           
@@ -108,7 +108,7 @@ export const useTransactions = () => {
     
     try {
       if (action === 'deposit') {
-        await hookDeposit(tokenAddress, amount, signer);
+        await hookDeposit(tokenAddress, amount, signer, tokenInfo.decimals);
         addNotification(`Successfully deposited ${amount} ${tokenInfo.symbol}!`, 'success');
       } else if (action === 'approve') {
         await hookApprove(tokenAddress, amount, signer);

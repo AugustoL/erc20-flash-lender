@@ -50,22 +50,22 @@ export function getConfig(): Config {
  * Get contract address by name and chain ID
  * @param contractName - Name of the contract (e.g., 'ERC20FlashLender')
  * @param chainId - Chain ID (e.g., 1 for mainnet, 31337 for localhost)
- * @returns Contract address or null if not found
+ * @returns Contract address or undefined if not found
  */
-export function getContractAddress(contractName: string, chainId: number): string | null {
+export function getContractAddress(contractName: string, chainId: number): string | undefined {
   
   const config = getConfig();
 
   const network = config.networks.find(n => n.chainId === chainId);
   if (!network) {
     console.warn(`Network with chainId ${chainId} not found in config`);
-    return null;
+    return undefined;
   }
 
   const contract = network.contracts.find(c => c.name === contractName);
   if (!contract) {
     console.warn(`Contract ${contractName} not found for chainId ${chainId}`);
-    return null;
+    return undefined;
   }
 
   return contract.address;
@@ -76,7 +76,7 @@ export function getContractAddress(contractName: string, chainId: number): strin
  * @param chainId - Chain ID
  * @returns ERC20FlashLender contract address
  */
-export function getERC20FlashLenderAddress(chainId: number): string | null {
+export function getERC20FlashLenderAddress(chainId: number): string | undefined {
   return getContractAddress('ERC20FlashLender', chainId);
 }
 

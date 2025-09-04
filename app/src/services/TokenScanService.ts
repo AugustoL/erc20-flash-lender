@@ -73,7 +73,6 @@ export class TokenScanService {
         }
       }
 
-      console.log(`Found ${tokenAddresses.size} unique token addresses across ${totalBlocks} blocks`);
       return Array.from(tokenAddresses);
     } catch (error) {
       console.error('Error scanning for tokens:', error);
@@ -186,14 +185,19 @@ export class TokenScanService {
       ];
 
       const response = await this.multicallService.multicall(multicallCalls);
-      
+
       const symbol = response.decoded[0]?.[0] || 'UNKNOWN';
-      const decimals = response.decoded[1]?.[0] || 18;
+      const decimalsRaw = response.decoded[1]?.[0];
+      const decimals = decimalsRaw !== undefined ? (typeof decimalsRaw === 'number' ? decimalsRaw : Number(decimalsRaw)) : 18;
       const name = response.decoded[2]?.[0] || 'Unknown Token';
+      
+      if (decimalsRaw === undefined) {
+        console.warn(`⚠️ Failed to fetch decimals for token ${tokenAddress} in getTokenMetadata, using default 18`);
+      }
       
       return { symbol, name, decimals };
     } catch (error) {
-      console.warn(`Failed to fetch metadata for token ${tokenAddress}:`, error);
+      console.warn(`⚠️ Failed to fetch metadata for token ${tokenAddress}, using default decimals 18:`, error);
       return { symbol: 'UNKNOWN', name: 'Unknown Token', decimals: 18 };
     }
   }
@@ -277,7 +281,6 @@ export class TokenScanService {
       }
 
       const response = await this.multicallService.multicall(multicallCalls);
-
       // Process results - 5 results per token
       for (let i = 0; i < tokenAddresses.length; i++) {
         const tokenAddress = tokenAddresses[i];
@@ -288,20 +291,26 @@ export class TokenScanService {
         try {
           const balance = response.decoded[baseIndex]?.[0] || BigInt(0);
           const symbol = response.decoded[baseIndex + 1]?.[0] || 'UNKNOWN';
-          const decimals = response.decoded[baseIndex + 2]?.[0] || 18;
+          const decimalsRaw = response.decoded[baseIndex + 2]?.[0];
+          const decimals = typeof decimalsRaw === 'number' ? decimalsRaw : (decimalsRaw !== undefined ? Number(decimalsRaw) : null);
           const name = response.decoded[baseIndex + 3]?.[0] || 'Unknown Token';
           const allowance = response.decoded[baseIndex + 4]?.[0] || BigInt(0);
-
+          
+          if (decimals === null) {
+            console.warn(`⚠️ Failed to fetch decimals for token ${tokenAddress}, using default 18. Raw response:`, decimalsRaw);
+          }
 
           // Only add tokens with positive balance
           if (balance > BigInt(0)) {
             
             // Create TokenBalance object
+            const finalDecimals = decimals ?? 18;
+            
             const tokenBalance = createTokenBalance(
               tokenAddress,
               typeof symbol === 'string' ? symbol : 'UNKNOWN',
               typeof name === 'string' ? name : 'Unknown Token',
-              typeof decimals === 'number' ? decimals : 18,
+              finalDecimals,
               balance,
               allowance
             );

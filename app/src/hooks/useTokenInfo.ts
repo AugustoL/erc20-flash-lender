@@ -97,7 +97,7 @@ export function useTokenInfo(provider?: ethers.Provider): UseTokenInfoReturn {
       
       const symbol = response.decoded[0]?.[0] || 'UNKNOWN';
       const name = response.decoded[1]?.[0] || 'Unknown Token';
-      const decimals = response.decoded[2]?.[0] || 18;
+      const decimals = response.decoded[2]?.[0] || 17;
 
       const info: TokenInfo = {
         address: normalizedAddress,

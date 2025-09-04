@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
+import { ethers, MaxUint256 } from 'ethers';
 import { useAccount } from 'wagmi';
 import { useDebouncedTokenInfo } from '../../../hooks/useTokenInfo';
 import { getERC20FlashLenderAddress } from '../../../config';
+import { safeFormatUnits, safeParseUnits } from '../../../utils/helpers';
 import '../../../styles/styles.css';
 
 interface TokenOption {
@@ -43,7 +44,9 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
   const [allowance, setAllowance] = useState<bigint>(BigInt(0));
+  const [balance, setBalance] = useState<bigint>(BigInt(0));
   const [isCheckingApproval, setIsCheckingApproval] = useState(false);
+  const [isCheckingBalance, setIsCheckingBalance] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
   const { tokenInfo, isLoading: isValidatingToken, error: tokenError, validateToken, clearToken } = 
@@ -56,6 +59,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
       setAmount('');
       setError('');
       setAllowance(BigInt(0));
+      setBalance(BigInt(0));
       setShowDropdown(false);
       clearToken();
     }
@@ -85,50 +89,55 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
     validateToken(tokenAddress);
   }, [tokenAddress, validateToken]);
 
-  // Check token allowance when token info is valid
+  // Check token allowance and balance when token info is valid
   useEffect(() => {
-    const checkAllowance = async () => {
+    const checkTokenData = async () => {
       if (!tokenInfo?.isValid || !userAddress || !lenderAddress || !provider) {
         setAllowance(BigInt(0));
+        setBalance(BigInt(0));
         return;
       }
 
       setIsCheckingApproval(true);
+      setIsCheckingBalance(true);
+      
       try {
         const tokenContract = new ethers.Contract(
           tokenInfo.address,
-          ['function allowance(address owner, address spender) view returns (uint256)'],
+          [
+            'function allowance(address owner, address spender) view returns (uint256)',
+            'function balanceOf(address owner) view returns (uint256)'
+          ],
           provider
         );
 
-        const currentAllowance = await tokenContract.allowance?.(userAddress, lenderAddress) || BigInt(0);
+        // Fetch both allowance and balance in parallel
+        const [currentAllowance, currentBalance] = await Promise.all([
+          tokenContract.allowance?.(userAddress, lenderAddress) || BigInt(0),
+          tokenContract.balanceOf?.(userAddress) || BigInt(0)
+        ]);
+        
         setAllowance(currentAllowance);
+        setBalance(currentBalance);
       } catch (error) {
-        console.error('Error checking allowance:', error);
+        console.error('Error checking token data:', error);
         setAllowance(BigInt(0));
+        setBalance(BigInt(0));
       } finally {
         setIsCheckingApproval(false);
+        setIsCheckingBalance(false);
       }
     };
 
-    checkAllowance();
+    checkTokenData();
   }, [tokenInfo, userAddress, lenderAddress, provider]);
 
-  if (!isOpen) return null;
-
-  const formatBalance = (value: string, decimals: number = 18): string => {
-    if (!value || value === '0') return '0';
-    try {
-      return ethers.formatUnits(value, decimals);
-    } catch (error) {
-      return '0';
-    }
-  };
+  if (!isOpen) return null
 
   const parseAmount = (value: string, decimals: number = 18): bigint => {
     if (!value || value.trim() === '') return BigInt(0);
     try {
-      return ethers.parseUnits(value.trim(), decimals);
+      return safeParseUnits(value.trim(), decimals);
     } catch (error) {
       throw new Error('Invalid amount format');
     }
@@ -166,6 +175,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
     setTokenAddress(value);
     setError('');
     setAllowance(BigInt(0));
+    setBalance(BigInt(0));
     setShowDropdown(false); // Close dropdown when user starts typing
   };
 
@@ -173,6 +183,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
     setTokenAddress(selectedToken.address);
     setError('');
     setAllowance(BigInt(0));
+    setBalance(BigInt(0));
     setShowDropdown(false);
   };
 
@@ -185,7 +196,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setAmount(value);
-    
+
     // Clear error when user starts typing
     if (error && error.includes('amount')) {
       setError('');
@@ -193,9 +204,11 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
   };
 
   const handleSetMaxAmount = () => {
-    // For new tokens, we can't determine max balance easily
-    // This is a placeholder - in a real app you'd query user's token balance
-    setAmount('1000');
+    if (tokenInfo?.isValid && balance > BigInt(0)) {
+      // Use the actual user balance
+      const maxAmount = safeFormatUnits(balance, tokenInfo.decimals);
+      setAmount(maxAmount);
+    }
   };
 
   const handleConfirm = () => {
@@ -242,7 +255,8 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
       validateAmount(amount) === null &&
       !isValidatingToken &&
       !isLoading &&
-      !isCheckingApproval
+      !isCheckingApproval &&
+      !isCheckingBalance
     );
   };
 
@@ -387,7 +401,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
               <input
                 id="amount"
                 type="text"
-                value={amount}
+                value={amount == MaxUint256.toString() ? 'Unlimited' : amount}
                 onChange={handleAmountChange}
                 placeholder={tokenInfo?.isValid ? `Enter ${tokenInfo.symbol} amount` : 'Select a token first'}
                 className="form-input"
@@ -407,9 +421,20 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
             {tokenInfo?.isValid && (
               <div className="form-help">
                 Minimum deposit: 100M wei (0.0000001 {tokenInfo.symbol})
+                {isCheckingBalance ? (
+                  <div className="token-checking-approval">
+                    🔄 Checking balance...
+                  </div>
+                ) : (
+                  <div className="token-allowance-display">
+                    💰 Your balance: {safeFormatUnits(balance, tokenInfo.decimals)} {tokenInfo.symbol}
+                  </div>
+                )}
                 {allowance > BigInt(0) && (
                   <div className="token-allowance-display">
-                    ✅ Current allowance: {ethers.formatUnits(allowance, tokenInfo.decimals)} {tokenInfo.symbol}
+                    ✅ Current allowance: {
+                    allowance == MaxUint256 ? 'Unlimited' : safeFormatUnits(allowance, tokenInfo.decimals)
+                    } {tokenInfo.symbol}
                   </div>
                 )}
                 {isCheckingApproval && (

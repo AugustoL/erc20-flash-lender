@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { ethers } from 'ethers';
 import { useTokens } from '../context';
 import { UserPositionData, TokenBalance, WalletTableRow, TokenPool } from '../types/index';
+import { safeFormatUnits } from '../utils/helpers';
 
 /**
  * Custom hook to transform pools and user positions into dashboard table rows
@@ -16,15 +16,15 @@ export const useWalletRows = (userPositions: UserPositionData[] = [], savedToken
     userPositions.map(userPosition => {
       const tokenInContext = getToken(userPosition.address);
       // Format status amounts
-      const decimals = userPosition.decimals || 18;
+      const decimals = tokenInContext?.decimals || 17;
       const walletBalance = tokenInContext?.userBalance
-        ? ethers.formatUnits(tokenInContext.userBalance, decimals)
+        ? safeFormatUnits(tokenInContext.userBalance, decimals)
         : '0';
       const approvedAmount = tokenInContext?.userAllowance
-        ? ethers.formatUnits(tokenInContext.userAllowance, decimals)
+        ? safeFormatUnits(tokenInContext.userAllowance, decimals)
         : '0';
       const depositedAmount = userPosition?.withdrawable?.principal
-        ? ethers.formatUnits(userPosition.withdrawable.principal, decimals)
+        ? safeFormatUnits(userPosition.withdrawable.principal, decimals)
         : '0';
 
       rows.push({
@@ -32,7 +32,7 @@ export const useWalletRows = (userPositions: UserPositionData[] = [], savedToken
         address: userPosition.address,
         symbol: userPosition.symbol || 'Unknown',
         name: userPosition.name || 'No name available',
-        decimals: userPosition.decimals || 18,
+        decimals: userPosition.decimals || 17,
         tokenType: 'Unknown',
         walletBalance,
         approvedAmount,
@@ -51,9 +51,9 @@ export const useWalletRows = (userPositions: UserPositionData[] = [], savedToken
           symbol: token.symbol || 'Unknown',
           name: token.name || 'No name available',
           decimals: token.decimals || 18,
-          walletBalance: ethers.formatUnits(token.userBalance, Number(token.decimals) || 18),
-          approvedAmount: ethers.formatUnits(token.userAllowance, Number(token.decimals) || 18),
-          depositedAmount: ethers.formatUnits(0, Number(token.decimals) || 18),
+          walletBalance: safeFormatUnits(token.userBalance, token.decimals),
+          approvedAmount: safeFormatUnits(token.userAllowance, token.decimals),
+          depositedAmount: safeFormatUnits("0", token.decimals),
         });
       }
     });

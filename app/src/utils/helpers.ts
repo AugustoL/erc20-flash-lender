@@ -1,10 +1,99 @@
+import { ethers } from 'ethers';
+
+// MaxUint256 constant for unlimited allowance detection
+const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+
+/**
+ * Safely format token units, handling edge case where decimals is 0 and unlimited allowances
+ * @param value - BigInt or string value to format
+ * @param decimals - Number of decimals (can be 0)
+ * @returns Formatted string representation
+ */
+export function safeFormatUnits(value: bigint | string, decimals: number = 18): string {
+  // Convert to BigInt if it's a string
+  const bigIntValue = typeof value === 'string' ? BigInt(value) : value;
+  
+  // Check for unlimited allowance (MaxUint256) before formatting
+  if (bigIntValue === MAX_UINT256) {
+    return 'Unlimited';
+  }
+  
+  if (decimals === 0) {
+    // For tokens with 0 decimals, the value is already in its final form
+    return bigIntValue.toString();
+  }
+  
+  try {
+    return ethers.formatUnits(bigIntValue, decimals);
+  } catch (error) {
+    console.warn('Error formatting units:', error);
+    return '0';
+  }
+}
+
+/**
+ * Safely parse token units, handling edge case where decimals is 0
+ * @param value - String value to parse
+ * @param decimals - Number of decimals (can be 0)
+ * @returns Parsed BigInt value
+ */
+export function safeParseUnits(value: string, decimals: number = 18): bigint {
+  if (decimals === 0) {
+    // For tokens with 0 decimals, parse as integer
+    try {
+      return BigInt(value.trim());
+    } catch (error) {
+      console.warn('Error parsing integer:', error);
+      return BigInt(0);
+    }
+  }
+  
+  try {
+    return ethers.parseUnits(value.trim(), decimals);
+  } catch (error) {
+    console.warn('Error parsing units:', error);
+    return BigInt(0);
+  }
+}
+
+/**
+ * Format a token amount with proper decimal handling and locale formatting
+ * @param value - BigInt value to format
+ * @param decimals - Number of decimals
+ * @param options - Locale formatting options
+ * @returns Formatted string with proper decimal places
+ */
+export function formatTokenAmount(
+  value: bigint, 
+  decimals: number = 18,
+  options?: Intl.NumberFormatOptions
+): string {
+  const formatted = safeFormatUnits(value, decimals);
+  
+  if (decimals === 0) {
+    // For integer tokens, use integer formatting
+    return Number(formatted).toLocaleString(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+      ...options
+    });
+  }
+  
+  // For decimal tokens, use appropriate decimal formatting
+  return Number(formatted).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: Math.min(decimals, 8), // Cap at 8 decimal places for display
+    ...options
+  });
+}
+
 export const formatAmount = (amount: string | undefined, maxLength: number = 8): string => {
   if (!amount || amount === '0') return '0';
   
+  // Check for 'Unlimited' string (already processed by safeFormatUnits)
+  if (amount === 'Unlimited') return 'Unlimited';
+  
   const num = parseFloat(amount);
-
-  if (num === 115792089237316195423570985008687907853269984665640564039457.584007913129639935) // MaxUint256
-    return 'Unlimited';
 
   if (num === 0) return '0';
   

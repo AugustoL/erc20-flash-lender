@@ -666,7 +666,7 @@ export class FlashLenderDataService {
   /**
    * Get user's balance and allowance for a specific token
    */
-  private async getUserTokenData(tokenAddress: string, userAddress: string): Promise<[bigint, bigint]> {
+  async getUserTokenData(tokenAddress: string, userAddress: string): Promise<[bigint, bigint]> {
     const ERC20_ABI = [
       'function balanceOf(address owner) view returns (uint256)',
       'function allowance(address owner, address spender) view returns (uint256)'
@@ -746,12 +746,17 @@ export class FlashLenderDataService {
       const response = await this.multicallService.multicall(multicallCalls);
       
       const symbol = response.decoded[0]?.[0] || 'UNKNOWN';
-      const decimals = response.decoded[1]?.[0] || 18;
+      const decimalsRaw = response.decoded[1]?.[0];
+      const decimals = decimalsRaw !== undefined ? (typeof decimalsRaw === 'number' ? decimalsRaw : Number(decimalsRaw)) : 18;
       const name = response.decoded[2]?.[0] || 'Unknown Token';
+      
+      if (decimalsRaw === undefined) {
+        console.warn(`⚠️ Failed to fetch decimals for token ${tokenAddress} in getTokenMetadata, using default 18`);
+      }
       
       return { symbol, name, decimals };
     } catch (error) {
-      console.warn(`Failed to fetch metadata for token ${tokenAddress}:`, error);
+      console.warn(`⚠️ Failed to fetch metadata for token ${tokenAddress}, using default decimals 18:`, error);
       return { symbol: 'UNKNOWN', name: 'Unknown Token', decimals: 18 };
     }
   }
@@ -810,10 +815,15 @@ export class FlashLenderDataService {
         
         try {
           pool.symbol = response.decoded[baseIndex]?.[0] || 'UNKNOWN';
-          pool.decimals = response.decoded[baseIndex + 1]?.[0] || 18;
+          const decimalsRaw = response.decoded[baseIndex + 1]?.[0];
+          pool.decimals = decimalsRaw !== undefined ? (typeof decimalsRaw === 'number' ? decimalsRaw : Number(decimalsRaw)) : 18;
           pool.name = response.decoded[baseIndex + 2]?.[0] || 'Unknown Token';
+          
+          if (decimalsRaw === undefined) {
+            console.warn(`⚠️ Failed to fetch decimals for pool token ${pool.address} in enrichWithTokenMetadata, using default 18`);
+          }
         } catch (error) {
-          console.warn(`Failed to process metadata for token ${pool.address}:`, error);
+          console.warn(`⚠️ Failed to process metadata for pool token ${pool.address}, using defaults:`, error);
           pool.symbol = 'UNKNOWN';
           pool.decimals = 18;
           pool.name = 'Unknown Token';
@@ -837,7 +847,7 @@ export class FlashLenderDataService {
           pool.decimals = decimals;
           pool.name = name;
         } catch (error) {
-          console.warn(`Failed to fetch metadata for token ${pool.address}:`, error);
+          console.warn(`⚠️ Failed to fetch metadata for pool token ${pool.address}, using default decimals 18:`, error);
           pool.symbol = 'UNKNOWN';
           pool.decimals = 18;
           pool.name = 'Unknown Token';
@@ -918,16 +928,6 @@ export class FlashLenderDataService {
         this.contract.queryFilter(executionFilter, fromBlock, toBlock)
       ]);
 
-      console.log(`Found events for token ${token}:`, {
-        deposits: depositEvents.length,
-        withdraws: withdrawEvents.length,
-        flashLoans: flashLoanEvents.length,
-        votes: voteEvents.length,
-        proposals: proposalEvents.length,
-        executions: executionEvents.length,
-        blockRange: `${fromBlock}-${toBlock}`,
-        userFilter: user || 'all users'
-      });
 
       // Process deposit events
       for (const event of depositEvents) {
