@@ -4,7 +4,7 @@ echo ""
 echo "//---- Starting React App ----//"
 # Start the React app
 cd app
-npm start &
+REACT_APP_COMMIT_HASH=$(git rev-parse HEAD) npm start &
 REACT_PID=$!
 
 echo ""
