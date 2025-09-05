@@ -18,6 +18,14 @@ export function safeFormatUnits(value: bigint | string, decimals: number = 18): 
     return 'Unlimited';
   }
   
+  // For tokens with fewer decimals, check if this is a practical "unlimited" amount
+  // A value is considered unlimited if it's > 10^(decimals + 18) 
+  // This catches cases where someone approves a very large but not max-uint256 amount
+  const unlimitedThreshold = BigInt(10 ** (decimals + 18));
+  if (bigIntValue >= unlimitedThreshold) {
+    return 'Unlimited';
+  }
+  
   if (decimals === 0) {
     // For tokens with 0 decimals, the value is already in its final form
     return bigIntValue.toString();
@@ -64,10 +72,19 @@ export function safeParseUnits(value: string, decimals: number = 18): bigint {
  * @returns Formatted string with proper decimal places
  */
 export function formatTokenAmount(
-  value: bigint, 
+  value: bigint | string | undefined, 
   decimals: number = 18,
   options?: Intl.NumberFormatOptions
 ): string {
+
+  if (value === undefined) {
+    console.warn('formatTokenAmount called with undefined value');
+    return '0';
+  }
+  if (typeof value === 'string') {
+    value = safeParseUnits(value, decimals);
+  }
+  
   const formatted = safeFormatUnits(value, decimals);
   
   if (decimals === 0) {
@@ -87,7 +104,12 @@ export function formatTokenAmount(
   });
 }
 
-export const formatAmount = (amount: string | undefined, maxLength: number = 8): string => {
+export const formatAmount = (
+  amount: string | undefined,
+  minDecimals: number = 0,
+  maxDecimals: number = 8,
+  options?: Intl.NumberFormatOptions
+): string => {
   if (!amount || amount === '0') return '0';
   
   // Check for 'Unlimited' string (already processed by safeFormatUnits)
@@ -97,22 +119,12 @@ export const formatAmount = (amount: string | undefined, maxLength: number = 8):
 
   if (num === 0) return '0';
   
-  // For very small numbers, use scientific notation
-  if (num < 0.0001) {
-    return num.toExponential(2);
-  }
-  
-  // For large numbers, use K/M/B notation
-  if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M';
-  }
-  if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'K';
-  }
-  
-  // For normal numbers, limit decimal places
-  const str = num.toFixed(4);
-  return str.length > maxLength ? num.toFixed(2) : str;
+  // For decimal tokens, use appropriate decimal formatting
+  return Number(num).toLocaleString(undefined, {
+    minimumFractionDigits: minDecimals,
+    maximumFractionDigits: maxDecimals,
+    ...options
+  });
 };
 
 export const getTokenType = (chainId: number, tokenAddress: string, symbol: string): string => {

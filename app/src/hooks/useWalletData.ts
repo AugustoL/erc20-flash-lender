@@ -16,7 +16,7 @@ export const useWalletRows = (userPositions: UserPositionData[] = [], savedToken
     userPositions.map(userPosition => {
       const tokenInContext = getToken(userPosition.address);
       // Format status amounts
-      const decimals = tokenInContext?.decimals || 17;
+      const decimals = tokenInContext?.decimals || 18;
       const walletBalance = tokenInContext?.userBalance
         ? safeFormatUnits(tokenInContext.userBalance, decimals)
         : '0';
@@ -32,7 +32,7 @@ export const useWalletRows = (userPositions: UserPositionData[] = [], savedToken
         address: userPosition.address,
         symbol: userPosition.symbol || 'Unknown',
         name: userPosition.name || 'No name available',
-        decimals: userPosition.decimals || 17,
+        decimals: userPosition.decimals || 18,
         tokenType: 'Unknown',
         walletBalance,
         approvedAmount,
