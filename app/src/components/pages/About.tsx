@@ -9,7 +9,7 @@ export default function About() {
             <div className="center-content about-hero">
               <div className="about-hero-logo">
                 <img 
-                  src="/logo.png" 
+                  src="./logo.png" 
                   alt="FlashLender Logo" 
                   className="about-logo"
                 />

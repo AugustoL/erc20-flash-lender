@@ -107,7 +107,7 @@ export function formatTokenAmount(
 export const formatAmount = (
   amount: string | undefined,
   minDecimals: number = 0,
-  maxDecimals: number = 8,
+  maxDecimals: number = 4,
   options?: Intl.NumberFormatOptions
 ): string => {
   if (!amount || amount === '0') return '0';
