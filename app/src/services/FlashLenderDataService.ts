@@ -708,7 +708,7 @@ export class FlashLenderDataService {
   /**
    * Get token metadata (symbol, name, decimals) for a single token
    */
-  private async getTokenMetadata(tokenAddress: string): Promise<{ symbol: string; name: string; decimals: number }> {
+  async getTokenMetadata(tokenAddress: string): Promise<{ symbol: string; name: string; decimals: number }> {
     const ERC20_ABI = [
       'function symbol() view returns (string)',
       'function decimals() view returns (uint8)',
@@ -900,6 +900,49 @@ export class FlashLenderDataService {
     }
     
     return 0;
+  }
+
+  /**
+   * Get all token addresses that have ever had deposits (including empty pools)
+   */
+  async getAllHistoricalTokens(fromBlock: number = 0): Promise<string[]> {
+    const cacheKey = `historical_tokens_${fromBlock}`;
+    const cached = this.getFromCache(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const toBlock = await this.provider.getBlockNumber();
+      const batchSize = 10000; // Max 10k blocks per batch
+      
+      // Get all Deposit events to discover tokens that have ever been used
+      const tokenSet = new Set<string>();
+      const depositFilter = this.contract.filters.Deposit();
+      
+      // Process events in batches to avoid RPC limits
+      for (let currentBlock = fromBlock; currentBlock <= toBlock; currentBlock += batchSize) {
+        const batchToBlock = Math.min(currentBlock + batchSize - 1, toBlock);
+        
+        try {
+          const depositEvents = await this.contract.queryFilter(depositFilter, currentBlock, batchToBlock);
+          
+          // Extract unique token addresses from this batch
+          for (const event of depositEvents) {
+            if ('args' in event && event.args) {
+              tokenSet.add(event.args.token);
+            }
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch deposit events for blocks ${currentBlock}-${batchToBlock}:`, error);
+          // Continue with next batch even if this one fails
+        }
+      }
+      
+      const tokens = Array.from(tokenSet);
+      return tokens;
+    } catch (error) {
+      console.error('Failed to fetch historical tokens:', error);
+      return [];
+    }
   }
 
   /**
@@ -1105,6 +1148,7 @@ export class FlashLenderDataService {
     totalFeesCollected: string;
     uniqueUsers: number;
     uniqueBorrowers: number;
+    poolUsersActions: UserAction[];
   }> {
     try {
       const actions = await this.getUserActions(token, undefined, fromBlock);
@@ -1149,7 +1193,8 @@ export class FlashLenderDataService {
         totalFlashLoanVolume: totalFlashLoanVolume.toString(),
         totalFeesCollected: totalFeesCollected.toString(),
         uniqueUsers: uniqueUsers.size,
-        uniqueBorrowers: uniqueBorrowers.size
+        uniqueBorrowers: uniqueBorrowers.size,
+        poolUsersActions: actions
       };
     } catch (error) {
       console.error('Error fetching pool statistics:', error);

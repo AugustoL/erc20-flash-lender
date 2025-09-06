@@ -7,6 +7,7 @@ import { UserAction } from '../../types';
 import { hasContractsDeployed } from '../../utils/helpers';
 import { MINIMUM_FRACTION_DIGITS, MAXIMUM_FRACTION_DIGITS } from '../../utils/constants';
 import NoContractsMessage from '../common/NoContractsMessage';
+import { getNetworkContracts } from '../../config';
 
 export default function Activity() {
   const { userAddress } = useParams<{ userAddress: string }>();
@@ -51,26 +52,35 @@ export default function Activity() {
       
       try {
         
-        // Get all deposited tokens first to fetch actions for each
-        const allPools = await service.getAllTokenPools();
+        // Get all historical token addresses (including empty pools)
+        const fromBlock = getNetworkContracts(currentChainId).find(c => c.name === 'ERC20FlashLender')?.fromBlock || 1;
+        const historicalTokens = await service.getAllHistoricalTokens(fromBlock);
         const allActions: UserAction[] = [];
         const metadata = new Map<string, { symbol: string; decimals: number }>();
 
-        // Fetch actions for each token pool
-        for (const pool of allPools) {
+        // Fetch actions for each historical token
+        for (const tokenAddress of historicalTokens) {
           try {
-            const tokenActions = await service.getUserActions(pool.address, userAddress);
+            const tokenActions = await service.getUserActions(tokenAddress, userAddress, fromBlock);
             allActions.push(...tokenActions);
             
-            // Store token metadata for formatting
-            if (pool.symbol && pool.decimals !== undefined) {
-              metadata.set(pool.address, {
-                symbol: pool.symbol,
-                decimals: pool.decimals
+            // Fetch token metadata for formatting
+            try {
+              const tokenMetadata = await service.getTokenMetadata(tokenAddress);
+              metadata.set(tokenAddress, {
+                symbol: tokenMetadata.symbol,
+                decimals: tokenMetadata.decimals
+              });
+            } catch (metaErr) {
+              console.warn(`Failed to fetch metadata for token ${tokenAddress}:`, metaErr);
+              // Use default metadata for unknown tokens
+              metadata.set(tokenAddress, {
+                symbol: 'UNKNOWN',
+                decimals: 18
               });
             }
           } catch (err) {
-            console.warn(`Failed to fetch actions for token ${pool.address}:`, err);
+            console.warn(`Failed to fetch actions for token ${tokenAddress}:`, err);
           }
         }
 

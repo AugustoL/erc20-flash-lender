@@ -166,22 +166,18 @@ export default function Pool() {
         const currentBlock = await provider.getBlockNumber();
         const fromBlock = Math.max(0, currentBlock - 5000);
 
-
-        const [userActionsData, poolActionsData, statsData, governanceData] = await Promise.all([
+        const [userActionsData, poolData, governanceData] = await Promise.all([
           // User-specific actions
           address ? service.getUserActions(tokenAddress, address, fromBlock) : Promise.resolve([]),
-          // All pool activity (limited to recent)
-          service.getUserActions(tokenAddress, undefined, fromBlock),
           // Pool statistics
           service.getPoolStatistics(tokenAddress, fromBlock),
           // Fee governance data
           service.getGovernanceData()
         ]);
 
-
         setUserActions(userActionsData);
-        setPoolActions(poolActionsData.slice(0, 20)); // Limit to 20 most recent
-        setPoolStatistics(statsData);
+        setPoolActions(poolData.poolUsersActions.slice(0, 20)); // Limit to 20 most recent
+        setPoolStatistics(poolData);
 
         // Process governance data for this specific token
         const tokenGovernance = governanceData.get(tokenAddress);
