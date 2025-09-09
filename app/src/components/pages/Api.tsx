@@ -358,33 +358,6 @@ IFlashLender(flashLender).flashLoan(
               </ul>
             </div>
 
-            <div className="api-section">
-              <h3>⚠️ Important Notes</h3>
-              <ul>
-                <li>Always approve the flash lender to spend the repayment amount</li>
-                <li>Ensure your contract has sufficient balance for repayment + fees</li>
-                <li>Flash loan execution must complete in a single transaction</li>
-                <li>Failed repayment will revert the entire transaction</li>
-                <li>Test thoroughly on testnets before mainnet deployment</li>
-              </ul>
-            </div>
-
-            <div className="api-section">
-              <h3>💡 Programmatic Access</h3>
-              <p>Get contract addresses in your code:</p>
-              <div className="code-container">
-                <pre className="code-block">
-{`import { getContractAddress } from './config';
-
-// Get ERC20FlashLender address for current network
-const flashLender = getContractAddress('ERC20FlashLender', chainId);
-
-// Get ExecutorFactory address
-const executorFactory = getContractAddress('ERC20FlashLoanExecutorFactory', chainId);`}
-                </pre>
-              </div>
-            </div>
-
           </div>
         </div>
       </div>
