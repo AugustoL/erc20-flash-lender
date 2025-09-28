@@ -755,10 +755,7 @@ export default function Pool() {
                     🗳️
                   </div>
                   <div className="governance-title">
-                    No governance data
-                  </div>
-                  <div className="governance-subtitle">
-                    No fee votes have been recorded for this pool yet.
+                    Loading governance data...
                   </div>
                 </div>
               )}
