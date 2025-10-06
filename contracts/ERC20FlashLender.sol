@@ -28,9 +28,9 @@ pragma solidity ^0.8.28;
  * - SafeERC20 integration for broad token compatibility
  */
 
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -65,10 +65,14 @@ interface IMultiFlashLoanReceiver {
     function executeMultiOperation(address[] calldata tokens, uint256[] calldata amounts, uint256[] calldata totalOwed, bytes calldata data) external returns (bool);
 }
 
-contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
+contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ===================== STATE VARIABLES =====================
+
+    /// @notice Flag to pause all operations and allow only withdrawals
+    /// @dev Can be set by the owner in case of emergency
+    bool public paused = false;
 
     /// @notice LP fee rate in basis points for each token (e.g., 50 = 0.5%)
     mapping(address => uint256) public lpFeesBps;
@@ -184,6 +188,11 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
     /// @notice Emitted when a proposed fee change is executed
     event LPFeeChangeExecuted(address indexed token, uint256 oldFee, uint256 newFee);
 
+    modifier whenNotPaused() {
+        require(!paused, "Contract is paused");
+        _;
+    }
+
     // ===================== INITIALIZATION =====================
     
     /**
@@ -191,12 +200,19 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
      * @param _owner Address of the contract owner
      * @dev Can only be called once. Sets up OpenZeppelin components and initial fee
      */
-    function initialize(address _owner) public initializer {
-        __Ownable_init(_owner);
-        __ReentrancyGuard_init();
+    constructor(address _owner) Ownable(_owner) {
     }
 
     // ===================== OWNER FUNCTIONS =====================
+
+    /**
+     * @notice Emergency pause function to stop/start all operations except withdrawals
+     * @dev Can be called by the owner in case of critical issues
+     *      Pauses all flash loans, deposits, and fee changes
+     */
+    function emergencyPause() external onlyOwner {
+        paused = paused ? false : true; // Toggle pause state
+    }
     
     /**
      * @notice Updates the management fee rate (owner only)
@@ -220,7 +236,7 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
      * @dev LP votes are weighted by their share holdings. Previous vote is replaced if exists.
      *      Only LPs with shares can vote.
      */
-    function voteForLPFee(address token, uint256 feeAmountBps) external {
+    function voteForLPFee(address token, uint256 feeAmountBps) external whenNotPaused {
         require(token != address(0), "Invalid token");
         require(feeAmountBps <= MAX_LP_FEE_BPS, "Fee amount too high");
         
@@ -247,7 +263,7 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
      * @dev Creates proposal if new fee has higher share support than current fee.
      *      Proposal can be executed after PROPOSAL_DELAY blocks.
      */
-    function proposeLPFeeChange(address token, uint256 newFeeBps) external {
+    function proposeLPFeeChange(address token, uint256 newFeeBps) external whenNotPaused {
         require(token != address(0), "Invalid token");
         require(newFeeBps <= MAX_LP_FEE_BPS, "Fee too high");
         
@@ -270,7 +286,7 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
      * @param newFeeBps The proposed new LP fee in basis points
      * @dev Can only be executed after the proposal delay has passed and if support is still sufficient
      */
-    function executeLPFeeChange(address token, uint256 newFeeBps) external {
+    function executeLPFeeChange(address token, uint256 newFeeBps) external whenNotPaused {
         require(token != address(0), "Invalid token");
         
         uint256 executionBlock = proposedFeeChanges[token][newFeeBps];
@@ -349,7 +365,7 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
      *      First depositor triggers virtual share creation to prevent manipulation
      *      Entry fee is applied to discourage dust attacks
      */
-    function deposit(address token, uint256 amount) external nonReentrant {
+    function deposit(address token, uint256 amount) external whenNotPaused nonReentrant {
         // Checks
         require(token != address(0), "Invalid token");
         require(amount >= MINIMUM_DEPOSIT, "Deposit too small");
@@ -485,7 +501,7 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
      * @dev Allows LPs to harvest fees without unstaking their principal deposit.
      *      Uses getWithdrawableAmount to calculate fees, then updates shares proportionally.
      */
-    function withdrawFees(address token) external nonReentrant {
+    function withdrawFees(address token) external nonReentrant whenNotPaused {
         require(token != address(0), "Invalid token");
         require(shares[token][msg.sender] > 0, "Nothing to withdraw");
         
@@ -555,7 +571,7 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         uint256 amount,
         address receiver,
         bytes calldata data
-    ) external nonReentrant {
+    ) external nonReentrant whenNotPaused {
         require(token != address(0), "Invalid token");
         require(receiver != address(0), "Invalid receiver");
         require(amount > 0, "Invalid amount");
@@ -635,7 +651,7 @@ contract ERC20FlashLender is Initializable, OwnableUpgradeable, ReentrancyGuardU
         uint256[] calldata amounts,
         address receiver,
         bytes calldata data
-    ) external nonReentrant {
+    ) external nonReentrant whenNotPaused {
         require(receiver != address(0), "Invalid receiver");
         require(tokens.length > 0, "No tokens specified");
         require(tokens.length == amounts.length, "Arrays length mismatch");

@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
+import { loadFixture, time, mine } from "@nomicfoundation/hardhat-network-helpers";
 
 // Helper function constants for improved test readability
 const approve = async function(token: any, signer: any, spender: string, amount: bigint){
@@ -36,11 +36,8 @@ describe("ERC20FlashLender", function () {
 
     // Deploy ERC20FlashLender
     const ERC20FlashLender = await ethers.getContractFactory("ERC20FlashLender");
-    const lender = await ERC20FlashLender.deploy();
+    const lender = await ERC20FlashLender.deploy(owner.address);
     await lender.waitForDeployment();
-
-    // Initialize with owner only (management fee defaults to 0)
-    await lender.initialize(owner.address);
 
     // Setup token balances
     const initialBalance = ethers.parseEther("10000");
@@ -52,7 +49,7 @@ describe("ERC20FlashLender", function () {
   }
 
   describe("Initialization", function () {
-    it("Should initialize with correct parameters", async function () {
+    it("Should deploy with correct parameters", async function () {
       const { lender, owner } = await loadFixture(deployERC20FlashLenderFixture);
 
       expect(await lender.owner()).to.equal(owner.address);
@@ -63,12 +60,11 @@ describe("ERC20FlashLender", function () {
       expect(await lender.MINIMUM_DEPOSIT()).to.equal(100000000); // 1e8
     });
 
-    it("Should set owner correctly on initialization", async function () {
+    it("Should set owner correctly on deployment", async function () {
       const [owner, user1] = await ethers.getSigners();
       const ERC20FlashLender = await ethers.getContractFactory("ERC20FlashLender");
-      const lender = await ERC20FlashLender.deploy();
+      const lender = await ERC20FlashLender.deploy(user1.address);
       await lender.waitForDeployment();
-      await lender.initialize(user1.address);
       expect(await lender.owner()).to.equal(user1.address);
       expect(await lender.managementFeePercentage()).to.equal(0);
     });
@@ -234,6 +230,167 @@ describe("ERC20FlashLender", function () {
       expect(fees).to.be.gt(0);
 
       await withdraw(lender, user1, tokenAddress);
+    });
+  });
+
+  describe("Emergency Pause", function () {
+    it("should be toggled only by owner and reflect state", async function () {
+      const { lender, owner, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+
+      expect(await lender.paused()).to.equal(false);
+
+      // Non-owner cannot pause
+      await expect(lender.connect(user1).emergencyPause())
+        .to.be.revertedWithCustomError(lender, "OwnableUnauthorizedAccount")
+        .withArgs(user1.address);
+
+      // Owner can toggle pause on
+      await lender.connect(owner).emergencyPause();
+      expect(await lender.paused()).to.equal(true);
+
+      // Owner can toggle pause off
+      await lender.connect(owner).emergencyPause();
+      expect(await lender.paused()).to.equal(false);
+    });
+
+    it("should block deposits and allow withdrawals while paused", async function () {
+      const { lender, lenderAddress, token, tokenAddress, owner, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+
+      // Prepare deposit
+      const depositAmount = ethers.parseEther("100");
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+
+      // Pause
+      await lender.connect(owner).emergencyPause();
+      expect(await lender.paused()).to.equal(true);
+
+      // New deposits revert
+      await approve(token, user1, lenderAddress, depositAmount);
+      await expect(deposit(lender, user1, tokenAddress, depositAmount))
+        .to.be.revertedWith("Contract is paused");
+
+      // Withdraw remains allowed
+      await expect(lender.connect(user1).withdraw(tokenAddress))
+        .to.emit(lender, "Withdraw");
+    });
+
+    it("should block flash loans when paused and resume after unpause", async function () {
+      const { lender, lenderAddress, token, tokenAddress, owner, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+
+      // Seed liquidity
+      const depositAmount = ethers.parseEther("200");
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+
+      // Deploy valid receiver
+      const FlashLoanReceiver = await ethers.getContractFactory("ValidReceiver");
+      const receiver = await FlashLoanReceiver.deploy();
+      await receiver.waitForDeployment();
+
+      // Fund receiver to repay
+      await transfer(token, user1, await receiver.getAddress(), ethers.parseEther("10"));
+
+      // Pause blocks flash loans
+      await lender.connect(owner).emergencyPause();
+      await expect(lender.flashLoan(
+        tokenAddress,
+        ethers.parseEther("50"),
+        await receiver.getAddress(),
+        "0x"
+      )).to.be.revertedWith("Contract is paused");
+
+      // Unpause and flash loan succeeds
+      await lender.connect(owner).emergencyPause(); // toggle off
+      await expect(lender.flashLoan(
+        tokenAddress,
+        ethers.parseEther("50"),
+        await receiver.getAddress(),
+        "0x"
+      )).to.not.be.reverted;
+    });
+
+    it("should block multi-token flash loans while paused", async function () {
+      const { lender, lenderAddress, token, tokenAddress, owner, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+
+      // Seed liquidity
+      const depositAmount = ethers.parseEther("300");
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+
+      // Deploy valid receiver
+      const FlashLoanReceiver = await ethers.getContractFactory("ValidReceiver");
+      const receiver = await FlashLoanReceiver.deploy();
+      await receiver.waitForDeployment();
+
+      // Fund receiver to repay
+      await transfer(token, user1, await receiver.getAddress(), ethers.parseEther("10"));
+
+      await lender.connect(owner).emergencyPause();
+      await expect(lender.flashLoanMultiple(
+        [tokenAddress],
+        [ethers.parseEther("100")],
+        await receiver.getAddress(),
+        "0x"
+      )).to.be.revertedWith("Contract is paused");
+    });
+
+    it("should block fee-only withdrawals while paused", async function () {
+      const { lender, lenderAddress, token, tokenAddress, owner, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+
+      // Deposit
+      const depositAmount = ethers.parseEther("200");
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+
+      // Generate some fees with a flash loan while unpaused
+      const FlashLoanReceiver = await ethers.getContractFactory("ValidReceiver");
+      const receiver = await FlashLoanReceiver.deploy();
+      await receiver.waitForDeployment();
+      await transfer(token, user1, await receiver.getAddress(), ethers.parseEther("10"));
+
+      await lender.flashLoan(
+        tokenAddress,
+        ethers.parseEther("100"),
+        await receiver.getAddress(),
+        "0x"
+      );
+
+      // Pause and ensure withdrawFees reverts
+      await lender.connect(owner).emergencyPause();
+      await expect(lender.connect(user1).withdrawFees(tokenAddress))
+        .to.be.revertedWith("Contract is paused");
+    });
+
+    it("should block governance actions while paused (vote, propose, execute)", async function () {
+      const { lender, lenderAddress, token, tokenAddress, owner, user1 } = await loadFixture(deployERC20FlashLenderFixture);
+
+      // Deposit so user has shares to vote
+      const depositAmount = ethers.parseEther("150");
+      await approve(token, user1, lenderAddress, depositAmount);
+      await deposit(lender, user1, tokenAddress, depositAmount);
+
+      // Pause blocks vote and propose
+      await lender.connect(owner).emergencyPause();
+      await expect(lender.connect(user1).voteForLPFee(tokenAddress, 2))
+        .to.be.revertedWith("Contract is paused");
+      await expect(lender.connect(user1).proposeLPFeeChange(tokenAddress, 2))
+        .to.be.revertedWith("Contract is paused");
+
+      // Unpause to create a valid proposal, then pause again to block execute
+      await lender.connect(owner).emergencyPause(); // unpause
+      await lender.connect(user1).voteForLPFee(tokenAddress, 2);
+      await lender.connect(user1).proposeLPFeeChange(tokenAddress, 2);
+  await mine(10); // wait PROPOSAL_DELAY blocks
+
+      await lender.connect(owner).emergencyPause();
+      await expect(lender.connect(user1).executeLPFeeChange(tokenAddress, 2))
+        .to.be.revertedWith("Contract is paused");
+
+      // Unpause and execute succeeds
+      await lender.connect(owner).emergencyPause();
+      await expect(lender.connect(user1).executeLPFeeChange(tokenAddress, 2))
+        .to.emit(lender, "LPFeeChangeExecuted");
     });
   });
 

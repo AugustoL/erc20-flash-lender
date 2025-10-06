@@ -27,9 +27,8 @@ describe("ERC20FlashLoanExecutor", function () {
 
     // Deploy ERC20FlashLender
     const ERC20FlashLender = await ethers.getContractFactory("ERC20FlashLender");
-    const lender = await ERC20FlashLender.deploy();
+    const lender = await ERC20FlashLender.deploy(owner.address);
     await lender.waitForDeployment();
-    await lender.initialize(owner.address); // Only owner, management fee defaults to 0
 
     // Deploy the factory
     const ERC20FlashLoanExecutorFactory = await ethers.getContractFactory("ERC20FlashLoanExecutorFactory");

@@ -14,7 +14,8 @@ A flash loan protocol for ERC20 tokens with proportional fee sharing among liqui
 - ⏰ **Delayed Execution**: 10-block delay for governance decisions
 - 🛡️ **Security First**: Comprehensive protection against precision attacks and common DeFi exploits
 - ⚡ **Ultra-Low Fees**: Default 0.01% LP fee with 1% of it as management fee (as % of LP fee)
-- 🔧 **Upgradeable**: Built with OpenZeppelin's upgradeable contracts
+- � **Emergency Pause (Withdraw-Only)**: Owner can enable withdraw-only mode during incidents
+- ⛔ **Non-Upgradeable**: Fixed implementation; migrations happen via pause → withdraw → redeploy
 - 📊 **Share-Based**: Fair fee distribution using share-based accounting with virtual shares protection
 - 🔄 **Advanced Executors**: Gas-optimized executor contracts for complex multi-step operations
 
@@ -97,6 +98,7 @@ npm run deploy:mainnet
 
 - `setManagementFee(percentage)` - Set management fee as % of LP fee (1-5%)
 - `withdrawManagementFees(token)` - Withdraw collected fees
+- `emergencyPause()` - Toggle emergency pause (withdraw-only mode)
 
 ### LP Governance Functions
 
@@ -307,7 +309,7 @@ ERC20FlashLender
 │   └── executeLPFeeChange() - Delayed execution
 ├── Administration
 │   ├── Management fee control (1-5% of LP fee)
-│   ├── Emergency controls
+│   ├── Emergency pause (withdraw-only mode)
 │   └── Owner functions (limited scope)
 └── Security Layer
     ├── Virtual shares dilution (VIRTUAL_SHARES = 1000)
@@ -336,7 +338,7 @@ ERC20FlashLender
 
 - **Unaudited code risk** - Primary concern
 - Smart contract risk
-- Admin key risk (limited to management fees only)  
+- Admin key risk (management fees and pause authority)  
 - Liquidity risk
 - Governance manipulation risk (voting power concentration)
 - Time delay risks (governance proposals can be front-run)
@@ -371,10 +373,31 @@ These protections work together to make precision attacks both technically diffi
 
 ### Best Practices
 
-- Use multisig for owner account
-- Implement time locks for admin functions
+- Use multisig for owner/pauser accounts
+- Implement time locks for configuration changes where feasible (pause remains immediate)
 - Monitor for unusual activity
 - Keep emergency procedures ready
+
+## 🛑 Emergency Pause & Incident Runbook
+
+The protocol is non-upgradeable and includes an emergency pause that switches the system to withdraw-only mode to protect users during incidents.
+
+What the pause does:
+- Disables: `deposit`, `flashLoan`, `flashLoanMultiple`, `withdrawFees`, governance actions (`voteForLPFee`, `proposeLPFeeChange`, `executeLPFeeChange`).
+- Allows: `withdraw` of principal + accumulated fees, read-only views, owner `withdrawManagementFees` (optional policy to pause this, but current implementation allows owner-only).
+
+Who can pause:
+- The contract owner (strongly recommended to be a multisig). Function: `emergencyPause()` toggles the state.
+
+How to verify pause state:
+- Call `paused()` on the lender contract; `true` means withdraw-only mode is active.
+
+Suggested incident flow:
+1) Detect anomaly → call `emergencyPause()` to enable withdraw-only mode.
+2) Communicate status and guidance to LPs (withdraw if necessary).
+3) Diagnose and decide whether to unpause or migrate.
+4) For migrations: keep paused, deploy a new version, publish addresses, guide users to withdraw from old and deposit into new.
+5) Unpause only when risk is cleared or migration is complete.
 
 ## Gas Optimization
 

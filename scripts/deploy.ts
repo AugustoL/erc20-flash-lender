@@ -26,22 +26,11 @@ async function main() {
     console.log("\\n📦 Deploying ERC20FlashLender...");
     const ERC20FlashLender = await hre.ethers.getContractFactory("ERC20FlashLender");
     
-    const lender = await ERC20FlashLender.deploy() as ERC20FlashLender;
+    const lender = await ERC20FlashLender.deploy(deployer.address) as ERC20FlashLender;
     await lender.waitForDeployment();
     
     const lenderAddress = await lender.getAddress();
     console.log("✅ ERC20FlashLender deployed to:", lenderAddress);
-
-    // Initialize the contract
-    console.log("\\n🔧 Initializing contract...");
-    try {
-        const initTx = await lender.initialize(deployer);
-        await initTx.wait();
-        console.log("✅ Contract initialized");
-    } catch (error) {
-        console.error("❌ Initialization failed:", error);
-        throw error;
-    }
 
     // Verify deployment
     console.log("\\n🔍 Verifying deployment...");
