@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity ^0.8.28;
+pragma solidity ^0.8.30;
 
 // Import interfaces from Uniswap V2 Core
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
