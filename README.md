@@ -287,6 +287,14 @@ Connect MetaMask to localhost:8545 when using local development options.
 
 For detailed frontend documentation, component guides, and development setup, see [app/README.md](app/README.md).
 
+### 🔒 Frontend Provider Policy
+
+This DApp is wallet-only by design:
+- No hosted/public RPCs are used for reads or writes.
+- A user wallet provider (e.g., MetaMask via window.ethereum) is required to load data and interact.
+- Server-side rendering is disabled to avoid any backend RPC dependencies.
+- If no wallet is connected, the UI will show a connect-wallet prompt and will not perform chain queries until connected.
+
 ## Architecture
 
 ```
