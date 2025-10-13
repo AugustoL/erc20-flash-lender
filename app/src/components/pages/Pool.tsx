@@ -791,7 +791,7 @@ export default function Pool() {
                     <ActivityList 
                       actions={userActions}
                       poolData={poolData}
-                      isConnected={isConnected}
+                      isConnected={true}
                       showUser={false}
                     />
                   )}

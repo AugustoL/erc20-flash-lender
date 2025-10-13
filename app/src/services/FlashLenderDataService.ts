@@ -1009,16 +1009,28 @@ export class FlashLenderDataService {
 
       // Process flash loan events (filter by user if specified)
       for (const event of flashLoanEvents) {
-        if ('args' in event && event.args && (!user || event.args.borrower === user || event.args.executor === user)) {
+        if ('args' in event && event.args) {
+          // Get the actual transaction to find the real sender (EOA or smart contract wallet)
+          const tx = await this.provider.getTransaction(event.transactionHash);
+          const txSender = tx?.from || event.args.borrower;
+          
+          // Filter by user if specified - check both tx sender and borrower
+          // (borrower could be the user's smart contract wallet or flash loan executor)
+          if (user &&
+              txSender.toLowerCase() !== user.toLowerCase() &&
+              event.args.borrower.toLowerCase() !== user.toLowerCase()) {
+            continue;
+          }
+          
           const block = await this.provider.getBlock(event.blockNumber);
           actions.push({
             type: 'flashloan',
-            user: event.args.borrower,
+            user: txSender,
             token: event.args.token,
             amount: event.args.amount.toString(),
             fee: event.args.fee.toString(),
             borrower: event.args.borrower,
-            executor: event.args.executor,
+            executor: txSender,
             feeAmount: event.args.fee.toString(),
             blockNumber: event.blockNumber,
             timestamp: block?.timestamp || 0,
@@ -1112,15 +1124,19 @@ export class FlashLenderDataService {
       
       for (const event of events) {
         if ('args' in event && event.args) {
+          // Get the actual transaction to find the real sender (EOA)
+          const tx = await this.provider.getTransaction(event.transactionHash);
+          const actualUser = tx?.from || event.args.borrower;
+          
           const block = await this.provider.getBlock(event.blockNumber);
           actions.push({
             type: 'flashloan',
-            user: event.args.borrower,
+            user: actualUser, // The actual EOA that initiated the transaction
             token: event.args.token,
             amount: event.args.amount.toString(),
             fee: event.args.fee.toString(),
-            borrower: event.args.borrower,
-            executor: event.args.executor,
+            borrower: event.args.borrower, // The contract that received the flash loan
+            executor: actualUser, // The actual EOA that executed the transaction
             feeAmount: event.args.fee.toString(),
             blockNumber: event.blockNumber,
             timestamp: block?.timestamp || 0,
