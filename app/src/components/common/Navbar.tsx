@@ -29,6 +29,9 @@ const Navbar = () => {
               <span className="navbar-activity-disabled">ACTIVITY</span>
             )}
           </li>
+          <li>
+            <Link to="/simulator">SIMULATOR</Link>
+          </li>
         </ul>
         <ul>
           <li>

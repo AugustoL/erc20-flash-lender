@@ -10,6 +10,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const Help = lazy(() => import('./pages/Help'));
 const About = lazy(() => import('./pages/About'));
 const Api = lazy(() => import('./pages/Api'));
+const Simulator = lazy(() => import('./pages/Simulator'));
 const ConnectWallet = lazy(() => import('./pages/ConnectWallet'));
 
 // Higher-order component to wrap lazy components with Suspense
@@ -32,6 +33,7 @@ export const LazySettings = withSuspense(Settings);
 export const LazyHelp = withSuspense(Help);
 export const LazyAbout = withSuspense(About);
 export const LazyApi = withSuspense(Api);
+export const LazySimulator = withSuspense(Simulator);
 export const LazyConnectWallet = withSuspense(ConnectWallet);
 
 // Default exports for backward compatibility
@@ -44,5 +46,6 @@ export {
   Help,
   About,
   Api,
+  Simulator,
   ConnectWallet
 };

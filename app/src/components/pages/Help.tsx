@@ -5,7 +5,7 @@ export default function Help() {
       <div className="card surface">
         <div className="padding-standard">
           <div className="help-container">
-            <h1 className="center-content margin-0">
+            <h1 className="center-content">
               FlashLender Help & Guide
             </h1>
 
