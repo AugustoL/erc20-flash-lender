@@ -16,7 +16,11 @@ module.exports = {
   },
   mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
   devServer: {
-    static: path.resolve(__dirname, 'public'),
+    // Serve static assets from public (and dist as a fallback so icons are available in dev)
+    static: [
+      path.resolve(__dirname, 'public'),
+      path.resolve(__dirname, 'dist')
+    ],
     historyApiFallback: true,
     port: 3000,
     open: true,
