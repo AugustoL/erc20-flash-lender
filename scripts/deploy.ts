@@ -1,5 +1,5 @@
 import hre from "hardhat";
-import { ERC20FlashLender, ERC20FlashLoanExecutorFactory } from "../typechain-types";
+import { ERC20FlashLender, ERC20FlashLoanExecutorFactory, PublicFlashLenderTester } from "../typechain-types";
 
 async function main() {
     console.log("🚀 Starting ERC20FlashLender deployment...");
@@ -25,12 +25,20 @@ async function main() {
     // Deploy the contract
     console.log("\\n📦 Deploying ERC20FlashLender...");
     const ERC20FlashLender = await hre.ethers.getContractFactory("ERC20FlashLender");
+    const PublicFlashLenderTester = await hre.ethers.getContractFactory("PublicFlashLenderTester");
     
     const lender = await ERC20FlashLender.deploy(deployer.address) as ERC20FlashLender;
     await lender.waitForDeployment();
     
     const lenderAddress = await lender.getAddress();
     console.log("✅ ERC20FlashLender deployed to:", lenderAddress);
+
+    console.log("\n📦 Deploying PublicFlashLenderTester...");
+    const flashLoanTester = await PublicFlashLenderTester.deploy(lenderAddress) as PublicFlashLenderTester;
+    await flashLoanTester.waitForDeployment();
+
+    const flashLoanTesterAddress = await flashLoanTester.getAddress();
+    console.log("✅ Contract deployed to:", flashLoanTesterAddress);
 
     // Verify deployment
     console.log("\\n🔍 Verifying deployment...");

@@ -50,11 +50,17 @@ describe("ERC20FlashLoanExecutor", function () {
     const simpleTarget = await SimpleTarget.deploy();
     await simpleTarget.waitForDeployment();
 
+    // Deploy a public flash lender tester contract for testing operations
+    const PublicFlashLenderTester = await ethers.getContractFactory("PublicFlashLenderTester");
+    const publicFlashLenderTester = await PublicFlashLenderTester.deploy(await lender.getAddress());
+    await publicFlashLenderTester.waitForDeployment();
+
     return { 
       factory, 
       lender, 
       token, 
       simpleTarget,
+      publicFlashLenderTester,
       owner, 
       user1, 
       user2, 
@@ -119,6 +125,50 @@ describe("ERC20FlashLoanExecutor", function () {
 
       // Verify the operation was executed
       expect(await simpleTarget.value()).to.equal(42);
+    });
+
+    it("Should create executor and execute flash loan with public flash tester repayment", async function () {
+      const { factory, lender, token, publicFlashLenderTester, user1 } = await loadFixture(deployFactoryFixture);
+      
+      const loanAmount = ethers.parseEther("100");
+      
+      // Calculate the total amount needed using correct fee calculation
+      const { totalFee } = calculateFlashLoanFees(loanAmount);
+      const totalNeeded = loanAmount + totalFee;
+
+      const publicFlashLenderTesterAddress = await publicFlashLenderTester.getAddress();
+      
+      // Pre-fund the publicFlashLenderTester so it can pay directly to the lender
+      await token.transfer(publicFlashLenderTesterAddress, totalFee);
+
+      // Create operations array that will:
+      // 1. Set a value in SimpleTarget (test operation)
+      // 2. Have SimpleTarget send repayment directly to the lender for gas efficiency
+      const operations = [
+        {
+          target: await token.getAddress(),
+          data: token.interface.encodeFunctionData("transfer", [publicFlashLenderTesterAddress, loanAmount]),
+          value: 0
+        },
+        {
+          target: publicFlashLenderTesterAddress,
+          data: publicFlashLenderTester.interface.encodeFunctionData("sendTokensToLender", [
+            await token.getAddress(),
+            totalNeeded // Send enough to repay the loan + fee
+          ]),
+          value: 0
+        }
+      ];
+
+      // This should work with gas-optimized direct repayment
+      await expect(factory.connect(user1).createAndExecuteFlashLoan(
+        await token.getAddress(),
+        loanAmount,
+        operations
+      )).to.not.be.reverted;
+
+      // Verify the operation was executed
+      expect(await token.balanceOf(publicFlashLenderTesterAddress)).to.equal(0);
     });
 
     it("Should handle multiple operations in single flash loan", async function () {

@@ -1,5 +1,5 @@
 import hre from "hardhat";
-import { ERC20FlashLender, MockERC20, ERC20FlashLoanExecutor } from "../typechain-types";
+import { ERC20FlashLender, MockERC20, ERC20FlashLoanExecutor, PublicFlashLenderTester } from "../typechain-types";
 import { deployMulticall3 } from "./deploy-multicall-hardhat";
 
 // Import actual Uniswap V2 contract ABIs
@@ -56,12 +56,20 @@ async function main() {
     // Deploy the contract
     console.log("\n📦 Deploying ERC20FlashLender...");
     const ERC20FlashLender = await hre.ethers.getContractFactory("ERC20FlashLender");
+    const PublicFlashLenderTester = await hre.ethers.getContractFactory("PublicFlashLenderTester");
     
     const lender = await ERC20FlashLender.deploy(deployer.address) as ERC20FlashLender;
     await lender.waitForDeployment();
     
     const lenderAddress = await lender.getAddress();
     console.log("✅ Contract deployed to:", lenderAddress);
+
+    console.log("\n📦 Deploying PublicFlashLenderTester...");
+    const flashLoanTester = await PublicFlashLenderTester.deploy(lenderAddress) as PublicFlashLenderTester;
+    await flashLoanTester.waitForDeployment();
+
+    const flashLoanTesterAddress = await flashLoanTester.getAddress();
+    console.log("✅ Contract deployed to:", flashLoanTesterAddress);
 
     // Deploy test ERC20 tokens for development
     console.log("\n🪙 Deploying test ERC20 tokens...");
@@ -105,11 +113,16 @@ async function main() {
         });
         
         console.log(`  ✅ ${tokenConfig.symbol} deployed to: ${tokenAddress}`);
-        
+
+        const baseAmount = Number(tokenConfig.supply) / 20; // Base amount for distribution
+
+        // Transfer initial tokens to flash loan tester contract
+        const baseTokenAmount = hre.ethers.parseUnits(baseAmount.toFixed(tokenConfig.decimals), tokenConfig.decimals);
+        await token.transfer(flashLoanTesterAddress, baseTokenAmount);
+
         if (tokenConfig.distribute) {
             // Distribute tokens to test accounts with randomness
             console.log(`  📤 Distributing ${tokenConfig.symbol} to test accounts...`);
-            const baseAmount = Number(tokenConfig.supply) / 20; // Base amount for distribution
             
             for (let i = 0; i < users.length; i++) {
                 // Add randomness: +/- 0-100 of base amount
@@ -769,7 +782,8 @@ async function main() {
         "router1": router1Address,
         "factory2": factory2Address,
         "router2": router2Address,
-        "weth": wethAddress
+        "weth": wethAddress,
+        "flashLoanTesterAddress": flashLoanTesterAddress
     };
 
     return {
