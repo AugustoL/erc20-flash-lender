@@ -44,6 +44,31 @@ export class FlashLenderDataService {
     this.contract = new Contract(contractAddress, ERC20FlashLenderABI.abi, this.provider);
     this.multicallService = new MulticallService(this.provider);
   }
+
+  // ==================== AUXILIARY BALANCE QUERIES ====================
+  /**
+   * Get the ERC20 balance of the FlashLoanTester (or any address) for a given token
+   * Caches the result briefly to avoid excessive RPC calls.
+   */
+  async getFlashLoanTesterBalance(tokenAddress: string, testerAddress: string): Promise<bigint> {
+    const cacheKey = `tester_balance_${tokenAddress}_${testerAddress}`;
+    const cached = this.getFromCache(cacheKey);
+    if (cached !== null && cached !== undefined) return cached as bigint;
+
+    try {
+      const erc20 = new Contract(
+        tokenAddress,
+        ['function balanceOf(address owner) view returns (uint256)'],
+        this.provider
+      );
+      const bal: bigint = await erc20.balanceOf(testerAddress);
+      this.setCache(cacheKey, bal);
+      return bal;
+    } catch (error) {
+      console.error(`Failed to fetch tester balance for ${testerAddress} on token ${tokenAddress}:`, error);
+      return BigInt(0);
+    }
+  }
   
   /**
    * Get the provider instance
@@ -1162,25 +1187,27 @@ export class FlashLenderDataService {
     totalFlashLoans: string;
     totalFlashLoanVolume: string;
     totalFeesCollected: string;
-    uniqueUsers: number;
-    uniqueBorrowers: number;
+
     poolUsersActions: UserAction[];
   }> {
     try {
       const actions = await this.getUserActions(token, undefined, fromBlock);
       const flashLoans = await this.getFlashLoanActivity(token, fromBlock);
+
+      // Get the amount of tokens on the pool via balanceOf
+      const tokenContract = new Contract(token, [
+        'function balanceOf(address owner) view returns (uint256)'
+      ], this.provider);
+
+      const poolBalance = await tokenContract.balanceOf(this.contractAddress);
       
       let totalDeposits = BigInt(0);
       let totalWithdrawals = BigInt(0);
       let totalFlashLoanVolume = BigInt(0);
       let totalFeesCollected = BigInt(0);
-      const uniqueUsers = new Set<string>();
-      const uniqueBorrowers = new Set<string>();
 
       // Process regular actions
-      for (const action of actions) {
-        uniqueUsers.add(action.user);
-        
+      for (const action of actions) {        
         if (action.type === 'deposit' && action.amount) {
           totalDeposits += BigInt(action.amount);
         } else if (action.type === 'withdraw' && action.amount) {
@@ -1193,7 +1220,6 @@ export class FlashLenderDataService {
 
       // Process flash loans
       for (const flashLoan of flashLoans) {
-        uniqueBorrowers.add(flashLoan.borrower);
         if (flashLoan.amount) {
           totalFlashLoanVolume += BigInt(flashLoan.amount);
         }
@@ -1208,8 +1234,6 @@ export class FlashLenderDataService {
         totalFlashLoans: flashLoans.length.toString(),
         totalFlashLoanVolume: totalFlashLoanVolume.toString(),
         totalFeesCollected: totalFeesCollected.toString(),
-        uniqueUsers: uniqueUsers.size,
-        uniqueBorrowers: uniqueBorrowers.size,
         poolUsersActions: actions
       };
     } catch (error) {

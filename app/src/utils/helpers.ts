@@ -224,7 +224,6 @@ export function hasContractsDeployed(chainId: number): boolean {
   try {
     const { getContractAddress } = require('../config');
     const flashLenderAddress = getContractAddress('ERC20FlashLender', chainId);
-    
     // Check if we have a valid address (not null, undefined, or placeholder)
     if (!flashLenderAddress) return false;
     

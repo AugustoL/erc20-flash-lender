@@ -9,7 +9,7 @@ import ActivityList from '../common/ActivityList';
 import { useNotifications } from '../../context/NotificationContext';
 import { analyzeUserActions, isActionAllowed } from '../../utils/userActions';
 import { hasContractsDeployed } from '../../utils/helpers';
-import { MINIMUM_FRACTION_DIGITS, MAXIMUM_FRACTION_DIGITS } from '../../utils/constants';
+import { MINIMUM_FRACTION_DIGITS, MAXIMUM_FRACTION_DIGITS, ENVIRONMENT } from '../../utils/constants';
 import NoContractsMessage from '../common/NoContractsMessage';
 import {
   PoolData,
@@ -19,6 +19,7 @@ import {
   FeeVote
 } from '../../types';
 import { useTokens } from '../../context/TokensContext';
+import { getContractAddress } from '../../config';
 
 export default function Pool() {
   const { tokenAddress } = useParams<{ tokenAddress: string }>();
@@ -46,6 +47,7 @@ export default function Pool() {
   const [activeTab, setActiveTab] = useState<'user' | 'pool' | 'stats'>('user');
   const [userBalance, setUserBalance] = useState<bigint | null>(null);
   const [userAllowance, setUserAllowance] = useState<bigint | null>(null);
+  const [testerBalance, setTesterBalance] = useState<string>('0');
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -89,6 +91,7 @@ export default function Pool() {
     proposeLPFeeChange: hookProposeLPFeeChange,
     executeLPFeeChange: hookExecuteLPFeeChange,
     approve: hookApprove,
+    testLoan: hookTestLoan,
   } = useFlashLender({
     provider,
     userAddress: address || undefined,
@@ -154,6 +157,23 @@ export default function Pool() {
 
     setIsLoading(false);
   }, [tokenAddress, pools, userPositions, isConnected, isHookLoading, clearCache]);
+
+  // Fetch FlashLoanTester balance for the current token to display in Test Loan modal
+  useEffect(() => {
+    const fetchTesterBalance = async () => {
+      try {
+        if (!service || !tokenAddress || !poolData?.decimals) return;
+        const testerAddress = getContractAddress('FlashLoanTester', chainId);
+        if (!testerAddress) return;
+        const bal = await service.getFlashLoanTesterBalance(tokenAddress, testerAddress);
+        const formatted = ethers.formatUnits(bal, poolData.decimals || 18);
+        setTesterBalance(formatted);
+      } catch (e) {
+        // Keep silent; fallback remains '0'
+      }
+    };
+    fetchTesterBalance();
+  }, [service, tokenAddress, poolData?.decimals, chainId]);
 
   // Load user actions and pool activity
   useEffect(() => {
@@ -462,7 +482,7 @@ export default function Pool() {
     setIsTransactionLoading(false);
   };
 
-  const handleModalConfirm = async (amount: string, feePercentage?: number, withdrawType?: 'all' | 'fees') => {
+  const handleModalConfirm = async (amount: string, feePercentage?: number, useExecutorFactory?: boolean, withdrawType?: 'all' | 'fees') => {
     if (!isConnected || !address || !tokenAddress) {
       addNotification('Please connect your wallet first.', 'warning');
       return;
@@ -483,6 +503,9 @@ export default function Pool() {
         }
         await hookVoteForLPFee(tokenAddress, feePercentage, signer);
         addNotification(`Vote submitted for ${feePercentage}% fee!`, 'success');
+      } else if (currentAction === 'testLoan') {
+        await hookTestLoan(tokenAddress, amount, useExecutorFactory, signer);
+        addNotification(`Test flash loan executed for ${amount} ${poolData?.symbol}!`, 'success');
       } else if (currentAction === 'deposit') {
         // Handle deposit transaction
         await hookDeposit(tokenAddress, amount, signer);
@@ -572,6 +595,18 @@ export default function Pool() {
         }
       case 'vote':
         return '0'; // Not used for vote action
+      case 'testLoan':
+        // Limit by pool liquidity since that's the borrow cap
+        if (poolData.totalLiquidity && poolData.decimals) {
+          try {
+            const formatted = ethers.formatUnits(poolData.totalLiquidity, poolData.decimals);
+            return formatted;
+          } catch (error) {
+            return '0';
+          }
+        } else {
+          return '0';
+        }
       default:
         return '0';
     }
@@ -666,15 +701,6 @@ export default function Pool() {
                   </div>
                   <div className="stat-value-purple">
                     {poolStatistics.totalFlashLoans}
-                  </div>
-                </div>
-                
-                <div className="stat-card">
-                  <div className="stat-label-sm">
-                    Unique Users
-                  </div>
-                  <div className="stat-value-sm">
-                    {poolStatistics.uniqueUsers}
                   </div>
                 </div>
 
@@ -913,6 +939,14 @@ export default function Pool() {
                           Withdraw
                         </button>
                       )}
+                      {ENVIRONMENT=="development" && isActionAllowed(userActionAnalysis, 'withdraw', '0') && (
+                        <button 
+                          className="btn-md success" 
+                          onClick={() => openModal('testLoan')}
+                        >
+                          Test Loan
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -969,6 +1003,7 @@ export default function Pool() {
         tokenDecimals={poolData?.decimals}
         availableBalance={getAvailableBalance()}
         availableFees={getAvailableFees()}
+        testerBalance={testerBalance}
         currentVoteFee={userPosition?.voteSelection ? userPosition.voteSelection / 100 : 0}
         feeGovernance={feeGovernance}
         onConfirm={handleModalConfirm}

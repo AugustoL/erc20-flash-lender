@@ -4,7 +4,7 @@ import { useAccount } from 'wagmi';
 import { FlashLenderDataService } from '../services/FlashLenderDataService';
 import { useSettings } from '../context/SettingsContext';
 import { useTokens } from '../context';
-import { getERC20FlashLenderAddress } from '../config';
+import { getERC20FlashLenderAddress, getContractAddress } from '../config';
 import { MINIMUM_FRACTION_DIGITS, MAXIMUM_FRACTION_DIGITS } from '../utils/constants';
 import { safeFormatUnits, safeParseUnits } from '../utils/helpers';
 import {
@@ -301,6 +301,119 @@ export function useFlashLender({
     // Note: Components should handle refresh with cache clearing and delay
   }, [service, pools, approve]);
 
+  const testLoan = useCallback(async (
+    tokenAddress: string,
+    amount: string,
+    useExecutorfactory: boolean = false,
+    signer: ethers.Signer,
+  ) => {
+    if (!service) throw new Error('Service not initialized');
+    if (!currentChainId) throw new Error('Chain ID not available');
+    console.log('Starting test loan...');
+
+    // Resolve addresses
+    const flashLoanTester = getContractAddress('FlashLoanTester', currentChainId);
+    if (!flashLoanTester) throw new Error(`flashLoanTester address not found for chain ${currentChainId}`);
+    const lenderAddress = getERC20FlashLenderAddress(currentChainId);
+    if (!lenderAddress) throw new Error(`FlashLender address not found for chain ${currentChainId}`);
+    const factoryAddress = getContractAddress('ERC20FlashLoanExecutorFactory', currentChainId);
+    if (!factoryAddress) throw new Error(`ExecutorFactory address not found for chain ${currentChainId}`);
+
+    // Determine token decimals
+    let decimals: number | undefined;
+    try {
+      const meta = await (service as any).getTokenMetadata(tokenAddress);
+      decimals = meta.decimals;
+    } catch {
+      decimals = pools.find(p => p.address === tokenAddress)?.decimals || 18;
+    }
+
+    const amountBigInt = safeParseUnits(amount, decimals || 18);
+
+    // Read current fee params from lender
+    const lenderReader = new ethers.Contract(
+      lenderAddress,
+      [
+        'function getEffectiveLPFee(address token) view returns (uint256)'
+      ],
+      (service as any).providerInstance
+    );
+
+    const [lpFeeBps] = await Promise.all([
+      (lenderReader as any).getEffectiveLPFee(tokenAddress) as Promise<bigint>,
+    ]);
+
+    // Compute fees using on-chain formula
+    const lpFeeAmount = (amountBigInt * BigInt(lpFeeBps)) / BigInt(10000);
+
+    // Amount to fetch from user wallet via transferFrom (executor will be spender)
+    const finalLoanAmount = amountBigInt + lpFeeAmount;
+
+    // get balance of flash loan tester before loan
+    const tokenContract = new ethers.Contract(
+      tokenAddress,
+      ['function balanceOf(address owner) view returns (uint256)'],
+      (service as any).providerInstance
+    );
+    const balanceBefore: bigint = (await tokenContract.balanceOf?.(flashLoanTester)) ?? BigInt(0);
+    console.log(`FlashLoanTester balance before loan: ${balanceBefore}`);
+    console.log(`Balance needed: ${lpFeeAmount}`);
+
+    if (useExecutorfactory) {
+
+      // Build operations for executor: repay principal and pull fees+extra from user to lender
+      const operationsInterface = new ethers.Interface([
+        'function transfer(address to, uint256 value) returns (bool)',
+        'function sendTokensToLender(address token, uint256 amount)',
+      ]);
+      const operations = [
+        {
+          target: tokenAddress,
+          value: 0,
+          data: operationsInterface.encodeFunctionData('transfer', [flashLoanTester, amountBigInt])
+        },
+        {
+          target: flashLoanTester,
+          value: 0,
+          data: operationsInterface.encodeFunctionData('sendTokensToLender', [tokenAddress, finalLoanAmount])
+        }
+      ];
+
+      console.log(operations);
+
+      // Prepare factory
+      const factoryAbi = [
+        'function createAndExecuteFlashLoan(address token, uint256 amount, (address target, bytes data, uint256 value)[] operations) returns (address)',
+      ];
+
+      // Execute createAndExecute in a single tx now that approval is set
+      const factoryWithSigner = new ethers.Contract(factoryAddress, factoryAbi, signer);
+
+      const tx = await (factoryWithSigner as any).createAndExecuteFlashLoan(tokenAddress, amountBigInt, operations, {
+        gasLimit: 6_000_000
+      });
+
+      console.log(tx);
+      await tx.wait();
+      console.log(tx);
+    } else  {
+      // Prepare tester
+      const publicTesterAbi = [
+        'function executeTestFlashLoan(address token, uint256 amount)',
+      ];
+
+      // Execute executeTestFlashLoan in a single tx
+      const testerWithSigner = new ethers.Contract(flashLoanTester, publicTesterAbi, signer);
+
+      const tx = await (testerWithSigner as any).executeTestFlashLoan(tokenAddress, amountBigInt, {
+        gasLimit: 6_000_000
+      });
+      console.log(tx);
+      await tx.wait();
+      console.log(tx);
+    }
+  }, [service, currentChainId, pools]);  
+
   const withdraw = useCallback(async (
     tokenAddress: string,
     signer: ethers.Signer
@@ -393,6 +506,7 @@ export function useFlashLender({
     voteForLPFee,
     proposeLPFeeChange,
     executeLPFeeChange,
+    testLoan,
     
     // Utilities
     refresh: fetchData,

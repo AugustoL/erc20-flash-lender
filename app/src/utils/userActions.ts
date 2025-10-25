@@ -170,7 +170,6 @@ export function isActionAllowed(
   amount: string
 ): boolean {
   const action = analysis.allowedActions.find(a => a.type === actionType);
-  console.log('Checking action:', actionType, 'with amount:', amount, 'Found action:', action);
   if (!action) {
     return false;
   }

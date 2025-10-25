@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import '../../../styles/styles.css';
 import { ActionType, WithdrawType, ActionModalProps } from '../../../types';
+import { getNetworkContracts } from '../../../config';
+import { useChainId } from 'wagmi';
+import { formatTokenAmount } from '../../../utils';
 
 // Re-export types for backward compatibility
 export type { ActionType, WithdrawType };
@@ -11,9 +14,9 @@ const ActionModal: React.FC<ActionModalProps> = ({
   onClose,
   action,
   tokenSymbol = 'TOKEN',
-  tokenDecimals = 18,
   availableBalance = '0',
   availableFees = '0',
+  testerBalance,
   currentVoteFee = 0,
   feeGovernance = [],
   onConfirm,
@@ -22,8 +25,12 @@ const ActionModal: React.FC<ActionModalProps> = ({
   const [amount, setAmount] = useState('');
   const [feePercentage, setFeePercentage] = useState(currentVoteFee.toString());
   const [withdrawType, setWithdrawType] = useState<WithdrawType>('all');
+  const [useExecutorFactory, setUseExecutorFactory] = useState<boolean>(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [error, setError] = useState('');
+
+  const chainId = useChainId();
+  const flashLenderTesterAddress = getNetworkContracts(chainId).find(c => c.name === 'FlashLoanTester')?.address || '';
 
   // Reset form when modal opens/closes or action changes
   useEffect(() => {
@@ -71,6 +78,8 @@ const ActionModal: React.FC<ActionModalProps> = ({
         return `Vote for LP Fee`;
       case 'approve':
         return `Approve ${tokenSymbol}`;
+      case 'testLoan':
+        return `Test Flash Loan (${tokenSymbol})`;
       default:
         return 'Action';
     }
@@ -86,6 +95,9 @@ const ActionModal: React.FC<ActionModalProps> = ({
         return 'Vote for your preferred LP fee rate. Your vote weight is proportional to your shares in the pool. The fee can be between 0% and 5% with up to 2 decimal places.';
       case 'approve':
         return `Approve the flash lender contract to spend your ${tokenSymbol} tokens. Enter the amount you want to allow the contract to spend.`;
+      case 'testLoan':
+        return `Execute a test flash loan for ${tokenSymbol}. You'll specify the amount to borrow and an extra percentage to return in addition to the owed fee to validate end-to-end repayment. 
+        Make sure the ${flashLenderTesterAddress} contract has enough tokens to repay the loan plus fees.`;
       default:
         return '';
     }
@@ -247,9 +259,17 @@ const ActionModal: React.FC<ActionModalProps> = ({
       if (isValid) {
         onConfirm('', parseFloat(feePercentage));
       }
+    } else if (action === 'testLoan') {
+      // Validate amount and extra percentage
+      const amountValid = validateAmount(amount);
+      isValid = amountValid;
+      if (isValid) {
+        // Overload: pass extra percentage via feePercentage param to avoid breaking props
+        onConfirm(amount, undefined, useExecutorFactory);
+      }
     } else if (action === 'withdraw') {
       // For withdrawals, we don't validate amount since it's based on selection
-      onConfirm(amount, undefined, withdrawType);
+      onConfirm(amount, undefined, false, withdrawType);
     } else {
       isValid = validateAmount(amount);
       if (isValid) {
@@ -263,6 +283,8 @@ const ActionModal: React.FC<ActionModalProps> = ({
     
     if (action === 'vote') {
       return !feePercentage || error !== '';
+    } else if (action === 'testLoan') {
+      return !amount ||  error !== '';
     } else {
       return !amount || error !== '';
     }
@@ -330,7 +352,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
                     disabled={isLoading || action === 'withdraw'}
                     readOnly={action === 'withdraw'}
                   />
-                  {action !== 'withdraw' && (
+                  {(action !== 'withdraw' && action !== 'testLoan') && (
                     <div className="input-group-append">
                       <button
                         type="button"
@@ -360,13 +382,18 @@ const ActionModal: React.FC<ActionModalProps> = ({
                       action === 'approve' ? 'Wallet balance:' : 'Available:'
                     } <span className="available-amount">
                       {action === 'withdraw' && withdrawType === 'fees' ? 
-                        (availableFees && availableFees !== '0' ? `${formatBalance(availableFees)} ${tokenSymbol}` : `0 ${tokenSymbol}`) :
-                        (availableBalance && availableBalance !== '0' ? `${formatBalance(availableBalance)} ${tokenSymbol}` : `0 ${tokenSymbol}`)
+                        (availableFees && availableFees !== '0' ? `${formatTokenAmount(availableFees)} ${tokenSymbol}` : `0 ${tokenSymbol}`) :
+                        (availableBalance && availableBalance !== '0' ? `${formatTokenAmount(availableBalance)} ${tokenSymbol}` : `0 ${tokenSymbol}`)
                       }
                     </span>
                     {(action === 'deposit' || action === 'approve') && (!availableBalance || availableBalance === '0') && (
                       <div className="action-modal-balance-note">
                         Note: Make sure you have {tokenSymbol} tokens in your wallet
+                      </div>
+                    )}
+                    {action === 'testLoan' && testerBalance && (
+                      <div className="available-balance">
+                        Tester Balance: <span className="available-amount">{formatTokenAmount(testerBalance)}</span> {tokenSymbol}
                       </div>
                     )}
                   </div>
@@ -458,6 +485,22 @@ const ActionModal: React.FC<ActionModalProps> = ({
                 }
               </div>
               {error && <div className="form-error">{error}</div>}
+            </div>
+          )}
+
+          {/* Only show for Test Loan action */}
+          {action === 'testLoan' && (
+            <div className="mt-3 flex items-center">
+              <input
+                id="use-executor-factory"
+                type="checkbox"
+                className="h-4 w-4"
+                checked={useExecutorFactory}
+                onChange={(e) => setUseExecutorFactory(e.target.checked)}
+              />
+              <label htmlFor="use-executor-factory" className="ml-2 text-sm">
+                Use executor factory
+              </label>
             </div>
           )}
         </div>

@@ -9,7 +9,6 @@ import {
   hardhat
 } from 'wagmi/chains';
 import type { Chain } from 'wagmi/chains';
-import { LENDER_ADDRESS_LOCALHOST } from '../utils';
 
 export interface Contract {
   name: string;
@@ -34,16 +33,6 @@ export interface Config {
  * Get the configuration with the contracts and networks
  */
 export function getConfig(): Config {
-  // Only apply localhost override when actually on localhost
-  if (
-    LENDER_ADDRESS_LOCALHOST &&
-    jsonConfig.networks[0] &&
-    jsonConfig.networks[0].chainId === 31337 &&
-    jsonConfig.networks[0].contracts &&
-    jsonConfig.networks[0].contracts[0]
-  ) {
-    jsonConfig.networks[0].contracts[0].address = LENDER_ADDRESS_LOCALHOST;
-  }
   return jsonConfig;
 }
 

@@ -109,8 +109,6 @@ export interface PoolStatistics {
   totalFlashLoans: string;
   totalFlashLoanVolume: string;
   totalFeesCollected: string;
-  uniqueUsers: number;
-  uniqueBorrowers: number;
 }
 
 /**
@@ -192,7 +190,7 @@ export interface FeeExecutionAction extends UserAction {
 /**
  * Action types for modals and UI interactions
  */
-export type ActionType = 'deposit' | 'withdraw' | 'vote' | 'approve' | 'add-token';
+export type ActionType = 'deposit' | 'withdraw' | 'vote' | 'approve' | 'add-token' | 'testLoan';
 
 /**
  * Withdraw types
@@ -210,9 +208,10 @@ export interface ActionModalProps {
   tokenDecimals?: number;
   availableBalance?: string; // For deposit: wallet balance, for withdraw: withdrawable amount
   availableFees?: string; // For withdraw fees only option
+  testerBalance?: string;
   currentVoteFee?: number; // Current user's vote selection for fee
   feeGovernance?: FeeVote[]; // Available fee options for voting
-  onConfirm: (amount: string, feePercentage?: number, withdrawType?: WithdrawType) => void;
+  onConfirm: (amount: string, feePercentage?: number, useExecutorFactory?: boolean, withdrawType?: WithdrawType) => void;
   isLoading?: boolean;
 }
 
