@@ -6,15 +6,19 @@ const webpack = require('webpack');
 const { execSync } = require('child_process');
 const packageJson = require('./package.json');
 
+const isProd = process.env.NODE_ENV === 'production';
+const isGhPages = process.env.GITHUB_PAGES === 'true';
+
 module.exports = {
   entry: path.resolve(__dirname, 'src', 'index.tsx'),
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.js',
+    publicPath: isGhPages ? '/erc20-flash-lender/' : '/', // key for GH Pages
     clean: true,
     charset: false
   },
-  mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
+  mode: isProd ? 'production' : 'development',
   devServer: {
     // Serve static assets from public (and dist as a fallback so icons are available in dev)
     static: [
@@ -83,7 +87,8 @@ module.exports = {
   },
   plugins: [
     new HtmlWebpackPlugin({
-      template: path.resolve(__dirname, 'public', 'index.html')
+      template: path.resolve(__dirname, 'public', 'index.html'),
+      inject: 'body', // ensure script is injected
     }),
     new CopyWebpackPlugin({
       patterns: [

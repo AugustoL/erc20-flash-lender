@@ -1187,7 +1187,6 @@ export class FlashLenderDataService {
     totalFlashLoans: string;
     totalFlashLoanVolume: string;
     totalFeesCollected: string;
-
     poolUsersActions: UserAction[];
   }> {
     try {
@@ -1212,9 +1211,6 @@ export class FlashLenderDataService {
           totalDeposits += BigInt(action.amount);
         } else if (action.type === 'withdraw' && action.amount) {
           totalWithdrawals += BigInt(action.amount);
-          if (action.fee) {
-            totalFeesCollected += BigInt(action.fee);
-          }
         }
       }
 

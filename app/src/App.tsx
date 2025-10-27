@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useCallback } from 'react';
 import { useChainId } from 'wagmi';
 
@@ -46,6 +46,9 @@ import boltGreen from './assets/bolt_green.png';
 import boltWhite from './assets/bolt_green_border.png';
 import { darkTheme, lightTheme, RainbowKitProvider } from '@rainbow-me/rainbowkit';
 
+// Detect GH Pages once
+const isGhPages = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
+
 // Separate component that uses the theme context
 function AppContent() {
   const onAppReadyCallback = useCallback(async () => {
@@ -56,43 +59,41 @@ function AppContent() {
   const { fullyReady } = useAppReady();
   const { showConnectWallet, showLoading } = useWagmiConnection();
   const { isDarkMode } = useTheme(); // Now this is inside ThemeProvider
-
+  
   return (
     <RainbowKitProvider theme={isDarkMode ? darkTheme() : lightTheme()}>
-      <Router basename={getBasename()}>
-        <div className="App">
-          {/* Side decoration bolts for wide screens */}
-          <div className="side-decoration left">
-            {!isDarkMode ? ( <img src={boltGreen} /> ) : ( <img src={boltWhite} /> )}
-          </div>
-          <div className="side-decoration right">
-            {!isDarkMode ? ( <img src={boltGreen} /> ) : ( <img src={boltWhite} /> )}
-          </div>
-          {(!fullyReady || showLoading) ? (
-              <Loading />
-            ) : showConnectWallet ? (
-              <LazyConnectWallet />
-            ) : (
-            <div className="app-content">
-              <Navbar />
-              <NotificationDisplay />
-              <Routes>
-                <Route path="/" element={<LazyTokens />} />
-                <Route path="/wallet/:userAddress" element={<LazyWallet />} />
-                <Route path="/activity/:userAddress" element={<LazyActivity />} />
-                <Route path="/pool/:tokenAddress" element={<LazyPool />} />
-                <Route path="/settings" element={<LazySettings />} />
-                <Route path="/help" element={<LazyHelp />} />
-                <Route path="/about" element={<LazyAbout />} />
-                <Route path="/api" element={<LazyApi />} />
-                <Route path="/simulator" element={<LazySimulator />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-              <Footer />
-            </div>
-          )}
+      <>
+        {/* Side decoration bolts for wide screens */}
+        <div className="side-decoration left">
+          {!isDarkMode ? ( <img src={boltGreen} /> ) : ( <img src={boltWhite} /> )}
         </div>
-      </Router>
+        <div className="side-decoration right">
+          {!isDarkMode ? ( <img src={boltGreen} /> ) : ( <img src={boltWhite} /> )}
+        </div>
+        {(!fullyReady || showLoading) ? (
+            <Loading />
+          ) : showConnectWallet ? (
+            <LazyConnectWallet />
+          ) : (
+          <div className="app-content">
+            <Navbar />
+            <NotificationDisplay />
+            <Routes>
+              <Route path="/" element={<LazyTokens />} />
+              <Route path="/wallet/:userAddress" element={<LazyWallet />} />
+              <Route path="/activity/:userAddress" element={<LazyActivity />} />
+              <Route path="/pool/:tokenAddress" element={<LazyPool />} />
+              <Route path="/settings" element={<LazySettings />} />
+              <Route path="/help" element={<LazyHelp />} />
+              <Route path="/about" element={<LazyAbout />} />
+              <Route path="/api" element={<LazyApi />} />
+              <Route path="/simulator" element={<LazySimulator />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+            <Footer />
+          </div>
+        )}
+      </>
     </RainbowKitProvider>
   );
 }
@@ -110,11 +111,17 @@ function AppWithTokenProvider() {
 
 // Main App component that provides the theme context
 function App() {
+  const BaseRouter = isGhPages ? HashRouter : Router;
+  // IMPORTANT: no basename for HashRouter
+  const basename = isGhPages ? '' : getBasename();
+
   return (
     <ErrorBoundary>
       <NotificationProvider>
         <SettingsProvider>
-          <AppWithTokenProvider />
+          <BaseRouter basename={basename}>
+            <AppWithTokenProvider />
+          </BaseRouter>
         </SettingsProvider>
       </NotificationProvider>
     </ErrorBoundary>

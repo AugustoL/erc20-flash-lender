@@ -2,21 +2,38 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link id="dynamic-favicon" rel="icon" href="/logo32.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
     <meta
-      name="FlashLender"
-      content="ERC20 Flash Lender Dashboard for managing and monitoring ERC20 token lending operations."
+    name="FlashLender"
+    content="ERC20 Flash Lender Dashboard for managing and monitoring ERC20 token lending operations."
     />
-  <link rel="apple-touch-icon" href="/logo192.png" />
 
-    <link rel="manifest" href="/manifest.json" />
+    <link id="favicon" rel="icon" href="/logo32.ico" />
+    <link id="apple-touch-icon" rel="apple-touch-icon" href="/logo192.png" />
+    <link id="manifest" rel="manifest" href="/manifest.json" />
+
+    <script>
+      (function () {
+        var l = window.location;
+        var base = document.createElement('base');
+        if (l.hostname.includes('github.io')) {
+          var seg = l.pathname.split('/').filter(Boolean);
+          base.href = seg.length ? '/' + seg[0] + '/' : '/';
+          document.getElementById('favicon').href = base.href + 'logo32.ico';
+          document.getElementById('apple-touch-icon').href = base.href + 'logo192.png';
+          document.getElementById('manifest').href = base.href + 'manifest.json';
+        } else {
+          base.href = "/";
+        }
+        document.head.appendChild(base);
+      })();
+    </script>
+
     <title>FlashLender</title>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-    <script src="/bundle.js"></script>
   </body>
 </html>

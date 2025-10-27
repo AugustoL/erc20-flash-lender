@@ -22,7 +22,7 @@ COMMIT_HASH=$(git rev-parse HEAD)
 
 # Build the app
 echo "Building React app on commit $COMMIT_HASH"
-NODE_ENV=staging REACT_APP_COMMIT_HASH=$COMMIT_HASH npm run build
+GITHUB_PAGES=true NODE_ENV=staging REACT_APP_COMMIT_HASH=$COMMIT_HASH npm run build
 
 echo "Staging build completed!"
 echo "Build output is in ./app/dist/"
