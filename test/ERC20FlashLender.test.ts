@@ -97,7 +97,7 @@ describe("ERC20FlashLender", function () {
       expect(await lender.totalShares(tokenAddress)).to.equal(virtualShares + netDeposit);
       
       // Total liquidity includes full deposit amount (entry fee stays in pool)
-      expect(await lender.totalLiquidity(tokenAddress)).to.equal(virtualShares + depositAmount);
+      expect(await lender.poolBalance(tokenAddress)).to.equal(virtualShares + depositAmount);
     });
 
     it("Should reject deposits below minimum", async function () {
@@ -132,7 +132,7 @@ describe("ERC20FlashLender", function () {
       const user1NetDeposit = firstDeposit - entryFee;
       expect(await lender.shares(tokenAddress, user1.address)).to.equal(user1NetDeposit);
       expect(await lender.totalShares(tokenAddress)).to.equal(virtualShares + user1NetDeposit);
-      expect(await lender.totalLiquidity(tokenAddress)).to.equal(virtualShares + firstDeposit);
+      expect(await lender.poolBalance(tokenAddress)).to.equal(virtualShares + firstDeposit);
 
       // Second deposit (no virtual shares, proportional calculation)
       const secondDeposit = ethers.parseEther("100");
@@ -171,9 +171,9 @@ describe("ERC20FlashLender", function () {
 
       // Calculate expected withdrawal: user gets their share of total pool minus exit fee
       const virtualShares = 1000n;
-      const totalLiquidityAfterDeposit = virtualShares + depositAmount; // virtual shares + full deposit
+      const poolBalanceAfterDeposit = virtualShares + depositAmount; // virtual shares + full deposit
       const totalSharesAfterDeposit = virtualShares + netDeposit; // virtual shares + net deposit
-      const userShareOfPool = (netDeposit * totalLiquidityAfterDeposit) / totalSharesAfterDeposit;
+      const userShareOfPool = (netDeposit * poolBalanceAfterDeposit) / totalSharesAfterDeposit;
       const expectedWithdrawal = userShareOfPool - exitFee;
       
       const actualWithdrawn = await token.balanceOf(user1.address) - balanceBefore;
@@ -219,8 +219,8 @@ describe("ERC20FlashLender", function () {
       );
 
       // Check that fees were collected
-      const totalLiquidity = await lender.totalLiquidity(tokenAddress);
-      expect(totalLiquidity).to.be.gt(depositAmount * 2n);
+      const poolBalance = await lender.poolBalance(tokenAddress);
+      expect(poolBalance).to.be.gt(depositAmount * 2n);
 
       // User1 withdraws and should get principal + share of fees
       const [withdrawable, principal, fees] = await lender.getWithdrawableAmount(
@@ -492,11 +492,13 @@ describe("ERC20FlashLender", function () {
       // Extremely small flash loan to generate minimal fees
       await lender.flashLoan(
         tokenAddress,
-        1000n, // Very small loan amount
+        10000000n, // Very small loan amount
         await receiver.getAddress(),
         "0x"
       );
-      
+
+      const feesAvailable = (await lender.getWithdrawableAmount(tokenAddress, user1.address));
+      console.log("Fees available for withdrawal:", feesAvailable);
       // Should reject if fees are too small after exit fee
       await expect(lender.connect(user1).withdrawFees(tokenAddress))
         .to.be.revertedWith("Fees too small after exit fee");
@@ -666,7 +668,7 @@ describe("ERC20FlashLender", function () {
         loanAmount,
         await receiver.getAddress(),
         "0x"
-      )).to.be.revertedWith("Not enough liquidity");
+      )).to.be.revertedWith("Not enough tokens to lend");
     });
 
     it("Should reject flash loan to EOA", async function () {
@@ -740,7 +742,7 @@ describe("ERC20FlashLender", function () {
       // Total needed = 1000 + 0.1 + 0 = 1000.1 ETH
       await transfer(token, user2, await receiver.getAddress(), ethers.parseEther("1001"));
       
-      const liquidityBefore = await lender.totalLiquidity(tokenAddress);
+      const liquidityBefore = await token.balanceOf(lenderAddress);
       
       await lender.connect(user2).flashLoan(
         tokenAddress,
@@ -749,7 +751,7 @@ describe("ERC20FlashLender", function () {
         "0x"
       );
       
-      const liquidityAfter = await lender.totalLiquidity(tokenAddress);
+      const liquidityAfter = await token.balanceOf(lenderAddress);
       const mgmtFees = await lender.collectedManagementFees(tokenAddress);
       
       // LP fee = 0.01% of 1000 = 0.1 ETH
@@ -835,7 +837,7 @@ describe("ERC20FlashLender", function () {
         amounts,
         await receiver.getAddress(),
         "0x"
-      )).to.be.revertedWith("Not enough liquidity");
+      )).to.be.revertedWith("Not enough tokens to lend");
     });
 
     it("Should reject multi-token flash loan with mismatched array lengths", async function () {
@@ -882,8 +884,8 @@ describe("ERC20FlashLender", function () {
       await transfer(token2, user2, await receiver.getAddress(), ethers.parseEther("501"));
       
       // Record balances before
-      const token1LiquidityBefore = await lender.totalLiquidity(tokenAddress);
-      const token2LiquidityBefore = await lender.totalLiquidity(token2Address);
+      const token1LiquidityBefore = await token.balanceOf(lenderAddress);
+      const token2LiquidityBefore = await token2.balanceOf(lenderAddress);
       const token1MgmtFeesBefore = await lender.collectedManagementFees(tokenAddress);
       const token2MgmtFeesBefore = await lender.collectedManagementFees(token2Address);
       
@@ -898,8 +900,8 @@ describe("ERC20FlashLender", function () {
       );
       
       // Verify fees were collected for both tokens
-      const token1LiquidityAfter = await lender.totalLiquidity(tokenAddress);
-      const token2LiquidityAfter = await lender.totalLiquidity(token2Address);
+      const token1LiquidityAfter = await token.balanceOf(lenderAddress);
+      const token2LiquidityAfter = await token2.balanceOf(lenderAddress);
       const token1MgmtFeesAfter = await lender.collectedManagementFees(tokenAddress);
       const token2MgmtFeesAfter = await lender.collectedManagementFees(token2Address);
       
@@ -958,8 +960,8 @@ describe("ERC20FlashLender", function () {
       await transfer(token2, user2, await receiver.getAddress(), ethers.parseEther("501"));
       
       // Record balances before
-      const token1LiquidityBefore = await lender.totalLiquidity(tokenAddress);
-      const token2LiquidityBefore = await lender.totalLiquidity(token2Address);
+      const token1LiquidityBefore = await token.balanceOf(lenderAddress);
+      const token2LiquidityBefore = await token2.balanceOf(lenderAddress);
       const token1MgmtFeesBefore = await lender.collectedManagementFees(tokenAddress);
       const token2MgmtFeesBefore = await lender.collectedManagementFees(token2Address);
       
@@ -974,8 +976,8 @@ describe("ERC20FlashLender", function () {
       );
       
       // Verify fees were collected for both tokens
-      const token1LiquidityAfter = await lender.totalLiquidity(tokenAddress);
-      const token2LiquidityAfter = await lender.totalLiquidity(token2Address);
+      const token1LiquidityAfter = await token.balanceOf(lenderAddress);
+      const token2LiquidityAfter = await token2.balanceOf(lenderAddress);
       const token1MgmtFeesAfter = await lender.collectedManagementFees(tokenAddress);
       const token2MgmtFeesAfter = await lender.collectedManagementFees(token2Address);
       
@@ -1345,7 +1347,7 @@ describe("ERC20FlashLender", function () {
       
       // Total liquidity = virtual shares + 3 deposits (including entry fees that stay in pool)
       const expectedTotalLiquidity = virtualShares + (depositAmount * 3n);
-      expect(await lender.totalLiquidity(tokenAddress)).to.equal(expectedTotalLiquidity);
+      expect(await lender.poolBalance(tokenAddress)).to.equal(expectedTotalLiquidity);
       
       // Total shares = virtual shares + 3 net deposits (after entry fees)
       const netDeposit = depositAmount - entryFee;
@@ -1367,7 +1369,7 @@ describe("ERC20FlashLender", function () {
       await withdraw(lender, user3, tokenAddress);
       
       // After all withdrawals, virtual shares should remain plus any dust from exit fees
-      const finalTotalLiquidity = await lender.totalLiquidity(tokenAddress);
+      const finalTotalLiquidity = await lender.poolBalance(tokenAddress);
       const finalTotalShares = await lender.totalShares(tokenAddress);
       
       // Virtual shares + exit fees (100 wei per user = 300 wei total) + small rounding dust
@@ -1504,11 +1506,10 @@ describe("ERC20FlashLender", function () {
       // The fee collected should match our calculation
       expect(actualFeeCollected).to.equal(expectedTotalFee);
       
-      // Verify the new balance is exactly the deposit + LP fee + virtual shares
+      // Verify the new balance is exactly the deposit + LP fee
       // (management fee is tracked separately)
-      const virtualShares = 1000n;
-      const expectedNewLiquidity = virtualShares + depositAmount + expectedLPFee;
-      expect(await lender.totalLiquidity(tokenAddress)).to.equal(expectedNewLiquidity);
+      const expectedNewLiquidity = depositAmount + expectedLPFee;
+      expect(await lender.poolBalance(tokenAddress)).to.equal(expectedNewLiquidity);
     });
 
     it("Should revert using gas-heavy receivers", async function () {
@@ -1562,7 +1563,7 @@ describe("ERC20FlashLender", function () {
       
       // Record balances before
       const mgmtFeesBefore = await lender.collectedManagementFees(tokenAddress);
-      const liquidityBefore = await lender.totalLiquidity(tokenAddress);
+      const liquidityBefore = await token.balanceOf(lenderAddress);
       
       // Execute flash loan
       await lender.connect(user2).flashLoan(
@@ -1578,10 +1579,10 @@ describe("ERC20FlashLender", function () {
       
       // Verify fees were calculated correctly
       const mgmtFeesAfter = await lender.collectedManagementFees(tokenAddress);
-      const liquidityAfter = await lender.totalLiquidity(tokenAddress);
+      const liquidityAfter = await token.balanceOf(lenderAddress);
       
       expect(mgmtFeesAfter - mgmtFeesBefore).to.equal(mgmtFee);
-      expect(liquidityAfter - liquidityBefore).to.equal(lpFee);
+      expect(liquidityAfter - liquidityBefore).to.equal(lpFee + mgmtFee);
     });
 
     it("Should prevent share dilution attacks with minimum deposit enforcement", async function () {
@@ -1739,7 +1740,7 @@ describe("ERC20FlashLender", function () {
       
       // Record fees before
       const mgmtFeesBefore = await lender.collectedManagementFees(await token.getAddress());
-      const liquidityBefore = await lender.totalLiquidity(await token.getAddress());
+      const liquidityBefore = await token.balanceOf(await lender.getAddress());
       
       // Execute flash loan
       await lender.connect(user2).flashLoan(
@@ -1751,7 +1752,7 @@ describe("ERC20FlashLender", function () {
       
       // Check that fees were distributed proportionally even in minimum fee case
       const mgmtFeesAfter = await lender.collectedManagementFees(await token.getAddress());
-      const liquidityAfter = await lender.totalLiquidity(await token.getAddress());
+      const liquidityAfter = await token.balanceOf(await lender.getAddress());
       
       const actualMgmtFee = mgmtFeesAfter - mgmtFeesBefore;
       const actualLpFee = liquidityAfter - liquidityBefore;

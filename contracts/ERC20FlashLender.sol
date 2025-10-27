@@ -92,9 +92,9 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
     /// @dev token => user => deposit amount
     mapping(address => mapping(address => uint256)) public deposits;
     
-    /// @notice Total liquidity available for flash loans for each token
+    /// @notice Token balance of the pools for each token
     /// @dev Includes both deposits and accumulated LP fees
-    mapping(address => uint256) public totalLiquidity;
+    mapping(address => uint256) public poolBalance;
     
     /// @notice Total shares issued for each token pool
     /// @dev Used for proportional fee distribution calculation
@@ -158,7 +158,7 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
     uint256 public constant PROPOSAL_DELAY = 10;
     // ===================== EVENTS =====================
     
-    /// @notice Emitted when a user deposits tokens into a liquidity pool
+    /// @notice Emitted when a user deposits tokens into a pool
     event Deposit(address indexed user, address indexed token, uint256 amount, uint256 shares);
     
     /// @notice Emitted when a user withdraws their deposit plus accumulated fees
@@ -358,7 +358,7 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
     // ===================== LIQUIDITY PROVIDER FUNCTIONS =====================
     
     /**
-     * @notice Deposit tokens into the liquidity pool to earn fees from flash loans
+     * @notice Deposit tokens into the pool to earn fees from flash loans
      * @param token Address of the ERC20 token to deposit
      * @param amount Number of tokens to deposit (must be >= MINIMUM_DEPOSIT)
      * @dev Mints shares proportional to the deposit's value relative to existing pool
@@ -387,15 +387,15 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
             shares[token][address(0)] = VIRTUAL_SHARES;
             totalShares[token] = VIRTUAL_SHARES;
             
-            // Add virtual liquidity equivalent (no actual tokens, just accounting)
-            totalLiquidity[token] = VIRTUAL_SHARES;
+            // Add virtual tokens into pool (no actual tokens, just accounting)
+            poolBalance[token] = VIRTUAL_SHARES;
         } else {
             // Subsequent deposits: maintain proportional value
-            require(totalLiquidity[token] > 0, "Invalid liquidity state");
+            require(poolBalance[token] > 0, "Invalid pool balance state");
             
             // Calculate shares with precision protection
             uint256 numerator = netAmount * totalShares[token];
-            newShares = numerator / totalLiquidity[token];
+            newShares = numerator / poolBalance[token];
             
             // Require meaningful share allocation (no forced 1 share)
             require(newShares > 0, "Deposit too small for current pool size");
@@ -405,7 +405,7 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
         deposits[token][msg.sender] += netAmount; // Track net deposit (after fee)
         shares[token][msg.sender] += newShares;
         totalShares[token] += newShares;
-        totalLiquidity[token] += amount; // Add full amount to liquidity (entry fee stays in pool)
+        poolBalance[token] += amount; // Add full deposit amount to pool (entry fee stays in pool)
 
         // Add the token to the tokensDeposited list if it's a new token
         if (tokensDepositedIndex[token] == 0) {
@@ -433,7 +433,7 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
      * @notice Withdraw all deposited tokens plus accumulated fees from flash loans
      * @param token Address of the ERC20 token to withdraw
      * @dev Calculates user's share of the pool and transfers principal and fees minus exit fee
-     *      User's payout = (user_shares / total_shares) * total_liquidity - exit_fee
+     *      User's payout = (user_shares / total_shares) * poolBalance - exit_fee
      *      Exit fee discourages dust attacks and precision manipulation
      */
     function withdraw(address token) external nonReentrant {
@@ -453,7 +453,7 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
         deposits[token][msg.sender] = 0;
         shares[token][msg.sender] = 0;
         totalShares[token] -= userShares;
-        totalLiquidity[token] -= netAmount; // Remove only net amount (exit fee stays in pool as dust)
+        poolBalance[token] -= netAmount; // Remove only net amount (exit fee stays in pool as dust)
 
         // Remove the token from the user's deposited tokens
         uint256 userTokenIndex = userDepositedTokensIndex[msg.sender][token];
@@ -525,7 +525,7 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
         // Update state before external interactions
         shares[token][msg.sender] -= sharesToRemove;
         totalShares[token] -= sharesToRemove;
-        totalLiquidity[token] -= netFeeWithdrawal; // Exit fee stays in pool as dust
+        poolBalance[token] -= netFeeWithdrawal; // Exit fee stays in pool as dust
         
         // deposits[token][msg.sender] remains unchanged - same principal
         
@@ -575,7 +575,7 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
         require(token != address(0), "Invalid token");
         require(receiver != address(0), "Invalid receiver");
         require(amount > 0, "Invalid amount");
-        require(amount <= totalLiquidity[token], "Not enough liquidity");
+        require(amount <= poolBalance[token], "Not enough tokens to lend");
         
         // Verify receiver implements the required interface
         require(_supportsExecuteOperationInterface(receiver), "Invalid receiver interface");
@@ -628,9 +628,11 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
 
         require(balanceAfter >= balanceBefore + totalFee, "Flash loan not repaid");
 
-        // Distribute fees: management fee to owner, LP fee increases pool value
+        // Distribute fees: management fee to owner, the rest stays in token pool
         collectedManagementFees[token] += mgmtFee;
-        totalLiquidity[token] += lpFee; // LP fees compound into pool, benefiting all LPs
+
+        //Update the pool balance, balanceAfter includes the fees plus possible extra tokens sent
+        poolBalance[token] = balanceAfter - collectedManagementFees[token];
         
         emit FlashLoan(msg.sender, token, amount, totalFee);
     }
@@ -672,7 +674,7 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
             
             require(token != address(0), "Invalid token");
             require(amount > 0, "Invalid amount");
-            require(amount <= totalLiquidity[token], "Not enough liquidity");
+            require(amount <= poolBalance[token], "Not enough tokens to lend");
             
             // Calculate fees for this token
             uint256 currentLpFee = lpFeesBps[token] == 0 ? DEFAULT_LP_FEE_BPS : lpFeesBps[token];
@@ -744,9 +746,11 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
                 }
             }
             
-            // Distribute fees
+            // Distribute fees: management fee to owner, the rest stays in token pool
             collectedManagementFees[token] += mgmtFee;
-            totalLiquidity[token] += lpFee;
+
+            //Update the pool balance, balanceAfter includes the fees plus possible extra tokens sent
+            poolBalance[token] = balanceAfter - collectedManagementFees[token];
         }
         
         emit MultiFlashLoan(msg.sender, tokens, amounts, totalFees);
@@ -772,12 +776,12 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
         }
         
         // Calculate user's proportional share of total pool (without rounding up)
-        uint256 numerator = userShares * totalLiquidity[token];
+        uint256 numerator = userShares * poolBalance[token];
         grossAmount = numerator / totalShares[token];
         
-        // Cap at available liquidity
-        if (grossAmount > totalLiquidity[token]) {
-            grossAmount = totalLiquidity[token];
+        // Cap at available pool balance
+        if (grossAmount > poolBalance[token]) {
+            grossAmount = poolBalance[token];
         }
         
         // Calculate exit fee and net amount
@@ -788,7 +792,7 @@ contract ERC20FlashLender is Initializable, Ownable, ReentrancyGuard {
         fees = grossAmount > principal ? grossAmount - principal : 0;
     }
 
-    /// @notice Get the list of all tokens deposited in the liquidity pool
+    /// @notice Get the list of all tokens deposited in the pool
     /// @return address[] Array of token addresses that have been deposited
     /// @dev Returns the list of all unique tokens that have been deposited by any user
     function getDepositedTokens() external view returns (address[] memory) {

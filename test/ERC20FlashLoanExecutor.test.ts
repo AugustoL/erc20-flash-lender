@@ -30,6 +30,9 @@ describe("ERC20FlashLoanExecutor", function () {
     const lender = await ERC20FlashLender.deploy(owner.address);
     await lender.waitForDeployment();
 
+    // Set management fee to 1% (100 basis points)
+    await lender.connect(owner).setManagementFee(100);
+
     // Deploy the factory
     const ERC20FlashLoanExecutorFactory = await ethers.getContractFactory("ERC20FlashLoanExecutorFactory");
     const factory = await ERC20FlashLoanExecutorFactory.deploy(await lender.getAddress());
@@ -169,6 +172,57 @@ describe("ERC20FlashLoanExecutor", function () {
 
       // Verify the operation was executed
       expect(await token.balanceOf(publicFlashLenderTesterAddress)).to.equal(0);
+    });
+
+    it("Should create executor and execute flash loan with public flash tester repayment with extra amount", async function () {
+      const { factory, lender, token, publicFlashLenderTester, user1 } = await loadFixture(deployFactoryFixture);
+      
+      const loanAmount = ethers.parseEther("100");
+
+      const extraAmount = ethers.parseEther("10");
+      
+      // Calculate the total amount needed using correct fee calculation
+      const { totalFee, lpFee, mgmtFee } = calculateFlashLoanFees(loanAmount);
+      const totalNeeded = loanAmount + totalFee;
+
+      const publicFlashLenderTesterAddress = await publicFlashLenderTester.getAddress();
+      
+      // Pre-fund the publicFlashLenderTester so it can pay directly to the lender
+      await token.transfer(publicFlashLenderTesterAddress, totalFee + extraAmount);
+
+      const poolBalanceBefore = await token.balanceOf(await lender.getAddress());
+
+      console.log("Total liquidity before:", poolBalanceBefore.toString());
+      // Create operations array that will:
+      // 1. Set a value in SimpleTarget (test operation)
+      // 2. Have SimpleTarget send repayment directly to the lender for gas efficiency
+      const operations = [
+        {
+          target: await token.getAddress(),
+          data: token.interface.encodeFunctionData("transfer", [publicFlashLenderTesterAddress, loanAmount]),
+          value: 0
+        },
+        {
+          target: publicFlashLenderTesterAddress,
+          data: publicFlashLenderTester.interface.encodeFunctionData("sendTokensToLender", [
+            await token.getAddress(),
+            totalNeeded + extraAmount
+          ]),
+          value: 0
+        }
+      ];
+
+      // This should work with gas-optimized direct repayment
+      await expect(factory.connect(user1).createAndExecuteFlashLoan(
+        await token.getAddress(),
+        loanAmount,
+        operations
+      )).to.not.be.reverted;
+
+      // Verify the operation was executed
+      expect(await token.balanceOf(publicFlashLenderTesterAddress)).to.equal(0);
+      expect(await lender.collectedManagementFees(await token.getAddress())).to.equal(mgmtFee);
+      expect(await lender.poolBalance(await token.getAddress())).to.equal(poolBalanceBefore + extraAmount + lpFee);
     });
 
     it("Should handle multiple operations in single flash loan", async function () {
@@ -857,7 +911,7 @@ describe("ERC20FlashLoanExecutor", function () {
         tokens,
         amounts,
         operations
-      )).to.be.revertedWith("Not enough liquidity");
+      )).to.be.revertedWith("Not enough tokens to lend");
     });
 
     it("Should reject multi-token flash loan if repayment fails for any token", async function () {
@@ -1018,8 +1072,8 @@ describe("ERC20FlashLoanExecutor", function () {
       await token2.transfer(await simpleTarget.getAddress(), loanAmount2 + totalFee2);
       
       // Record balances before
-      const token1LiquidityBefore = await lender.totalLiquidity(await token.getAddress());
-      const token2LiquidityBefore = await lender.totalLiquidity(await token2.getAddress());
+      const token1LiquidityBefore = await token.balanceOf(await lender.getAddress());
+      const token2LiquidityBefore = await token2.balanceOf(await lender.getAddress());
       const token1MgmtFeesBefore = await lender.collectedManagementFees(await token.getAddress());
       const token2MgmtFeesBefore = await lender.collectedManagementFees(await token2.getAddress());
       
@@ -1050,8 +1104,8 @@ describe("ERC20FlashLoanExecutor", function () {
       await factory.connect(user1).createAndExecuteMultiFlashLoan(tokens, amounts, operations);
       
       // Verify fees were collected correctly for both tokens
-      expect(await lender.totalLiquidity(await token.getAddress())).to.equal(token1LiquidityBefore + lpFee1);
-      expect(await lender.totalLiquidity(await token2.getAddress())).to.equal(token2LiquidityBefore + lpFee2);
+      expect(await lender.poolBalance(await token.getAddress())).to.equal(token1LiquidityBefore + lpFee1);
+      expect(await lender.poolBalance(await token2.getAddress())).to.equal(token2LiquidityBefore + lpFee2);
       expect(await lender.collectedManagementFees(await token.getAddress())).to.equal(token1MgmtFeesBefore + mgmtFee1);
       expect(await lender.collectedManagementFees(await token2.getAddress())).to.equal(token2MgmtFeesBefore + mgmtFee2);
     });
