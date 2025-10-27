@@ -88,7 +88,7 @@ export function useFlashLender({
         name: pool?.name || 'No name available',
         decimals: pool?.decimals || 18,
         logoUrl: pool?.logoUrl,
-        totalLiquidity: pool?.totalLiquidity || BigInt(0),
+        poolBalance: pool?.poolBalance || BigInt(0),
         totalShares: pool?.totalShares || BigInt(0),
         lpFee: pool?.lpFee || 0,
         managementFee: pool?.managementFee || BigInt(0),
@@ -169,7 +169,7 @@ export function useFlashLender({
       const formatted: PoolData[] = await Promise.all(poolsData.map(async pool => {
         
         const formattedLiq = formatWithSymbol(
-          formatTokenAmount(pool.totalLiquidity, pool.decimals || 18),
+          formatTokenAmount(pool.poolBalance, pool.decimals || 18),
           pool.symbol
         );
         
@@ -185,7 +185,7 @@ export function useFlashLender({
         
         const poolFormatted: PoolData = {
           address: pool.address,
-          totalLiquidity: pool.totalLiquidity,
+          poolBalance: pool.poolBalance,
           totalShares: pool.totalShares,
           lpFee: pool.lpFee,
           managementFee: pool.managementFee,

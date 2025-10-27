@@ -597,9 +597,9 @@ export default function Pool() {
         return '0'; // Not used for vote action
       case 'testLoan':
         // Limit by pool liquidity since that's the borrow cap
-        if (poolData.totalLiquidity && poolData.decimals) {
+        if (poolData.poolBalance && poolData.decimals) {
           try {
-            const formatted = ethers.formatUnits(poolData.totalLiquidity, poolData.decimals);
+            const formatted = ethers.formatUnits(poolData.poolBalance, poolData.decimals);
             return formatted;
           } catch (error) {
             return '0';
@@ -655,7 +655,7 @@ export default function Pool() {
                     Total Value Locked
                   </div>
                   <div className="stat-value">
-                    {poolData.formattedLiquidity || poolData.totalLiquidity}
+                    {poolData.formattedLiquidity || poolData.poolBalance}
                   </div>
                 </div>
                 

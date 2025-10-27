@@ -23,7 +23,7 @@ export interface TokenBalance extends Token {
  * Raw token pool data from blockchain
  */
 export interface TokenPool extends Token {
-  totalLiquidity: bigint;
+  poolBalance: bigint;
   totalShares: bigint;
   lpFee: number; // in basis points
   managementFee: bigint;

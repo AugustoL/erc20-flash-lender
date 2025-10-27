@@ -131,14 +131,14 @@ export class FlashLenderDataService {
         // Prepare all multicall calls
         const multicallCalls = [];
         for (const tokenAddress of tokenAddresses) {
-          // Add 4 calls per token: totalLiquidity, totalShares, getEffectiveLPFee, collectedManagementFees
+          // Add 4 calls per token: poolBalance, totalShares, getEffectiveLPFee, collectedManagementFees
           multicallCalls.push(
             {
               target: this.contractAddress,
-              callData: MulticallService.encodeCall(this.contract.interface, 'totalLiquidity', [tokenAddress]),
+              callData: MulticallService.encodeCall(this.contract.interface, 'poolBalance', [tokenAddress]),
               allowFailure: true,
               contractInterface: this.contract.interface,
-              methodName: 'totalLiquidity'
+              methodName: 'poolBalance'
             },
             {
               target: this.contractAddress,
@@ -173,14 +173,14 @@ export class FlashLenderDataService {
           const baseIndex = i * 4;
           
           try {
-            const totalLiquidity = response.decoded[baseIndex]?.[0] || BigInt(0);
+            const poolBalance = response.decoded[baseIndex]?.[0] || BigInt(0);
             const totalShares = response.decoded[baseIndex + 1]?.[0] || BigInt(0);
             const lpFee = response.decoded[baseIndex + 2]?.[0] || 25; // default 25 bps
             const managementFee = response.decoded[baseIndex + 3]?.[0] || BigInt(0);
 
             const poolData: TokenPool = {
               address: tokenAddress,
-              totalLiquidity,
+              poolBalance,
               totalShares,
               lpFee: Number(lpFee),
               managementFee
@@ -214,7 +214,7 @@ export class FlashLenderDataService {
             // Add empty pool data as fallback
             pools.push({
               address: tokenAddress,
-              totalLiquidity: BigInt(0),
+              poolBalance: BigInt(0),
               totalShares: BigInt(0),
               lpFee: 25,
               managementFee: BigInt(0)
@@ -227,8 +227,8 @@ export class FlashLenderDataService {
         // Fallback to original Promise.all approach
         for (const tokenAddress of tokenAddresses) {
           try {
-            const [totalLiquidity, totalShares, lpFee, managementFee] = await Promise.all([
-              this.contract.totalLiquidity(tokenAddress),
+            const [poolBalance, totalShares, lpFee, managementFee] = await Promise.all([
+              this.contract.poolBalance(tokenAddress),
               this.contract.totalShares(tokenAddress),
               this.contract.getEffectiveLPFee(tokenAddress),
               this.contract.collectedManagementFees(tokenAddress)
@@ -236,7 +236,7 @@ export class FlashLenderDataService {
             
             const poolData: TokenPool = {
               address: tokenAddress,
-              totalLiquidity,
+              poolBalance,
               totalShares,
               lpFee: Number(lpFee),
               managementFee
@@ -309,10 +309,10 @@ export class FlashLenderDataService {
           multicallCalls.push(
             {
               target: this.contractAddress,
-              callData: MulticallService.encodeCall(this.contract.interface, 'totalLiquidity', [tokenAddress]),
+              callData: MulticallService.encodeCall(this.contract.interface, 'poolBalance', [tokenAddress]),
               allowFailure: true,
               contractInterface: this.contract.interface,
-              methodName: 'totalLiquidity'
+              methodName: 'poolBalance'
             },
             {
               target: this.contractAddress,
@@ -375,7 +375,7 @@ export class FlashLenderDataService {
           const baseIndex = i * 8;
           
           try {
-            const totalLiquidity = response.decoded[baseIndex]?.[0] || BigInt(0);
+            const poolBalance = response.decoded[baseIndex]?.[0] || BigInt(0);
             const totalShares = response.decoded[baseIndex + 1]?.[0] || BigInt(0);
             const lpFee = response.decoded[baseIndex + 2]?.[0] || 25;
             const managementFee = response.decoded[baseIndex + 3]?.[0] || BigInt(0);
@@ -389,7 +389,7 @@ export class FlashLenderDataService {
 
             positions.push({
               address: tokenAddress,
-              totalLiquidity,
+              poolBalance,
               totalShares,
               lpFee,
               managementFee,
@@ -432,8 +432,8 @@ export class FlashLenderDataService {
         // Fallback to original Promise.all approach
         for (const tokenAddress of tokenAddresses) {
           try {
-            const [totalLiquidity, totalShares, lpFee, managementFee,deposits, shares, withdrawable, voteSelection] = await Promise.all([
-              this.contract.totalLiquidity(tokenAddress),
+            const [poolBalance, totalShares, lpFee, managementFee,deposits, shares, withdrawable, voteSelection] = await Promise.all([
+              this.contract.poolBalance(tokenAddress),
               this.contract.totalShares(tokenAddress),
               this.contract.getEffectiveLPFee(tokenAddress),
               this.contract.collectedManagementFees(tokenAddress),
@@ -448,7 +448,7 @@ export class FlashLenderDataService {
 
             positions.push({
               address: tokenAddress,
-              totalLiquidity,
+              poolBalance,
               totalShares,
               lpFee,
               managementFee,
@@ -903,7 +903,7 @@ export class FlashLenderDataService {
     }
     
     // Get average liquidity (simplified - you might want to track this more precisely)
-    const currentLiquidity = await this.contract.totalLiquidity(token);
+    const currentLiquidity = await this.contract.poolBalance(token);
     
     // Calculate blocks elapsed
     const blocksElapsed = toBlock - fromBlock;
