@@ -10,12 +10,6 @@ stop_processes() {
     kill -9 $(lsof -ti:8545)
   fi
   
-  # Stop signature server (port 3001)
-  if lsof -ti:3001; then
-    echo "Stopping existing signature server..."
-    kill -9 $(lsof -ti:3001)
-  fi
-  
   # Stop React app (port 3000)
   if lsof -ti:3000; then
     echo "Stopping existing React app..."
