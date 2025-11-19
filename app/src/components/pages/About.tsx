@@ -18,7 +18,7 @@ export default function About() {
                 Stake Any ERC20. Earn. Govern.
               </h2>
               <p className="about-hero-description">
-                FlashLender is a decentralized platform for staking any ERC20 token in flash loan pools. Earn competitive yields from flash loan fees, and help govern pool fee rates as an investor.
+                FlashLender is a decentralized platform for staking any ERC20 token in flash loan pools. Earn competitive yields from flash loan fees, and govern pool fee rates as an investor.
               </p>
             </div>
 
