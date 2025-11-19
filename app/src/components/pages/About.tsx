@@ -28,11 +28,11 @@ export default function About() {
                 <div className="about-feature-icon">🎯</div>
                 <h4 className="about-feature-title">Key Features</h4>
                 <ul className="about-feature-list">
-                  <li>✓ Stake any ERC20 token</li>
-                  <li>✓ Earn passive income from flash loan activity</li>
-                  <li>✓ Investor-governed pool fees</li>
-                  <li>✓ Real-time APY and pool stats</li>
-                  <li>✓ Transparent, secure, and non-custodial</li>
+                  <li>Stake any ERC20 token</li>
+                  <li>Earn passive income from flash loan activity</li>
+                  <li>Investor-governed pool fees</li>
+                  <li>Real-time APY and pool stats</li>
+                  <li>Transparent, secure, and non-custodial</li>
                 </ul>
               </div>
 

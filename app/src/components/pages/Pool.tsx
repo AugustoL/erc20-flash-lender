@@ -706,31 +706,27 @@ export default function Pool() {
                     })()}
                   </div>
                 </div>
-              </div>
-            </div>
-            {poolStatistics && (
-            <div className="padding-standard-y">
-              <div className="pool-stats-grid-3">
-                <div className="stat-card">
+
+                {poolStatistics && <div className="stat-card">
                   <div className="stat-label-sm">
                     Total Flash Loans
                   </div>
                   <div className="stat-value-purple">
                     {poolStatistics.totalFlashLoans}
                   </div>
-                </div>
+                </div>}
 
-                <div className="stat-card">
+                {poolStatistics && <div className="stat-card">
                   <div className="stat-label-sm">
                     Fees Collected
                   </div>
                   <div className="stat-value-green">
                     {formatAmount(poolStatistics.totalFeesCollected, poolData.decimals, poolData.symbol)}
                   </div>
-                </div>
+                </div>}
+
               </div>
             </div>
-          )}
           </div>
 
           {/* Fee Governance Section */}

@@ -177,7 +177,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
     }
   };
 
-    const handleTokenAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTokenAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setTokenAddress(value);
     setError('');
@@ -497,7 +497,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
         )}
 
         {/* Modal Actions */}
-        <div className="modal-actions">
+        {balance > 0 && <div className="modal-actions">
           {actionMode !== 'none' && (
             <button 
               className="btn-md outline" 
@@ -551,6 +551,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
             </button>
           )}
         </div>
+        }
     </BaseModal>
   );
 };export default NewTokenDepositModal;
