@@ -1602,16 +1602,17 @@ html, body {
   color: var(--text-primary);
 }
 
-.modal-body {
-  margin-bottom: 24px;
-}
-
 .modal-footer {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
   padding-top: 16px;
   border-top: 1px solid var(--border-color);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: space-around;
 }
 
 /* Form Input Styles */
@@ -1792,8 +1793,8 @@ html, body {
 }
 
 .input-group-append .btn-xs {
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  border-left: none;
+  border-radius: var(--radius-sm);
+  margin: 0px 2px;
   white-space: nowrap;
 }
 

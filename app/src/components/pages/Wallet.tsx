@@ -109,9 +109,12 @@ export default function Wallet() {
         await syncMultipleTokens([tokenAddress], provider, spenderAddress);
       }
       
+      // Don't close modal - keep it open so user can deposit next
+      // Just reset to mode selection so they can choose deposit
       setTransactionLoading(false);
     } catch (error) {
       setTransactionLoading(false);
+      // Error notification is already handled by executeNewTokenTransaction
     }
   };
 

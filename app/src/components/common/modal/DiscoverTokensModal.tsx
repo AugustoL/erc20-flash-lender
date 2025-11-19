@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { usePublicClient, useAccount } from 'wagmi';
 import BaseModal from './BaseModal';
-import ModalLoading from './ModalLoading';
-import { StandardActions } from './ModalActions';
 import { TokenScanService } from '../../../services/TokenScanService';
 import { useTokens } from '../../../context/TokensContext';
 import { getERC20FlashLenderAddress } from '../../../config';
@@ -140,20 +138,90 @@ export default function DiscoverTokensModal({
             </div>
           </div>
 
-          <StandardActions
-            onCancel={onClose}
-            onConfirm={handleDiscover}
-            cancelText="Cancel"
-            confirmText="Discover Tokens"
-            isLoading={isSearching}
-            isConfirmDisabled={!isDiscoverEnabled}
-          />
+          <div className="modal-actions">
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-md outline"
+              disabled={isSearching}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDiscover}
+              className="btn-md primary"
+              disabled={!isDiscoverEnabled || isSearching}
+            >
+              {isSearching ? 'Processing...' : 'Discover Tokens'}
+            </button>
+          </div>
         </>
       ) : (
-        <ModalLoading
-          title="Discovering Tokens..."
-          message={`Scanning blockchain from block ${selectedBlockNumber.toLocaleString()}`}
-        />
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          minHeight: '200px',
+          flexDirection: 'column',
+          textAlign: 'center'
+        }}>
+          <div style={{ marginBottom: '24px' }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              border: '4px solid var(--border-color, #e5e7eb)',
+              borderTop: '4px solid var(--primary-color, #3b82f6)',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite',
+              margin: '0 auto 24px auto'
+            }}></div>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '1.125rem' }}>
+              Discovering Tokens...
+            </h4>
+            <p style={{ margin: '0 0 16px 0', color: 'var(--text-secondary, #6b7280)' }}>
+              Scanning blockchain from block {selectedBlockNumber.toLocaleString()}
+            </p>
+            <div style={{
+              display: 'inline-flex',
+              gap: '4px'
+            }}>
+              <span style={{ 
+                animation: 'pulse 1.5s ease-in-out infinite',
+                color: 'var(--primary-color, #3b82f6)',
+                fontSize: '24px'
+              }}>.</span>
+              <span style={{ 
+                animation: 'pulse 1.5s ease-in-out infinite 0.2s',
+                color: 'var(--primary-color, #3b82f6)',
+                fontSize: '24px'
+              }}>.</span>
+              <span style={{ 
+                animation: 'pulse 1.5s ease-in-out infinite 0.4s',
+                color: 'var(--primary-color, #3b82f6)',
+                fontSize: '24px'
+              }}>.</span>
+            </div>
+          </div>
+          
+          <style>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+            
+            @keyframes pulse {
+              0%, 80%, 100% {
+                opacity: 0.3;
+                transform: scale(0.8);
+              }
+              40% {
+                opacity: 1;
+                transform: scale(1);
+              }
+            }
+          `}</style>
+        </div>
       )}
     </BaseModal>
   );

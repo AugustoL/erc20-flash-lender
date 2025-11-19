@@ -39,16 +39,10 @@
 export { default as BaseModal } from './BaseModal';
 export type { BaseModalProps } from './BaseModal';
 
-export { default as ModalActions, StandardActions } from './ModalActions';
-export type { ModalActionsProps, StandardActionsProps } from './ModalActions';
-
-export { default as ModalLoading } from './ModalLoading';
-export type { ModalLoadingProps } from './ModalLoading';
-
 // Specific modal implementations
-export { default as ActionModal } from './ActionModal';
+export { default as PoolActionModal } from './PoolActionModal';
 export { default as NewTokenDepositModal } from './NewTokenDepositModal';
 export { default as DiscoverTokensModal } from './DiscoverTokensModal';
 
-// Re-export types from ActionModal for backward compatibility
-export type { ActionType, WithdrawType } from './ActionModal';
+// Re-export types from PoolActionModal for backward compatibility
+export type { ActionType, WithdrawType } from './PoolActionModal';

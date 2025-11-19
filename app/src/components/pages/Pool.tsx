@@ -4,7 +4,7 @@ import { useAccount, usePublicClient, useWalletClient, useChainId } from 'wagmi'
 import { ethers } from 'ethers';
 import { useFlashLender } from '../../hooks/useFlashLender';
 import { FlashLenderDataService } from '../../services/FlashLenderDataService';
-import ActionModal, { ActionType } from '../common/modal/ActionModal';
+import PoolActionModal, { ActionType } from '../common/modal/PoolActionModal';
 import ActivityList from '../common/ActivityList';
 import { useNotifications } from '../../context/NotificationContext';
 import { analyzeUserActions, isActionAllowed } from '../../utils/userActions';
@@ -482,6 +482,10 @@ export default function Pool() {
     setIsTransactionLoading(false);
   };
 
+  const handleSwitchToApprove = () => {
+    setCurrentAction('approve');
+  };
+
   const handleModalConfirm = async (amount: string, feePercentage?: number, useExecutorFactory?: boolean, withdrawType?: 'all' | 'fees') => {
     if (!isConnected || !address || !tokenAddress) {
       addNotification('Please connect your wallet first.', 'warning');
@@ -570,6 +574,18 @@ export default function Pool() {
     switch (currentAction) {
       case 'deposit':
         // Convert from wei to formatted number for the modal
+        if (userBalance) {
+          try {
+            const formatted = ethers.formatUnits(userBalance, poolData.decimals || 18);
+            return formatted;
+          } catch (error) {
+            return '0';
+          }
+        } else {
+          return '0';
+        }
+      case 'approve':
+        // For approve action, show wallet balance
         if (userBalance) {
           try {
             const formatted = ethers.formatUnits(userBalance, poolData.decimals || 18);
@@ -915,22 +931,22 @@ export default function Pool() {
                       </div>
                     )}
                     <div className="row-actions center">
-                      {isActionAllowed(userActionAnalysis, 'approve', '0') && (
+                      {userBalance !== null && userBalance > BigInt(0) && (
                         <button 
                           className="btn-md success" 
                           onClick={() => openModal('approve')}
                         >
-                          Approve
+                          {userAllowance && userAllowance > BigInt(0) ? 'Set Allowance' : 'Approve'}
                         </button>
                       )}
-                      {isActionAllowed(userActionAnalysis, 'deposit', '0') && (
+                      {(userBalance !== null && userBalance > BigInt(0)) || (userAllowance !== null && userAllowance > BigInt(0)) ? (
                         <button 
                           className="btn-md success" 
                           onClick={() => openModal('deposit')}
                         >
                           Deposit
                         </button>
-                      )}
+                      ) : null}
                       {isActionAllowed(userActionAnalysis, 'withdraw', '0') && (
                         <button 
                           className="btn-md success" 
@@ -958,22 +974,22 @@ export default function Pool() {
                       Start earning fees by providing liquidity to this pool.
                     </div>
                     <div className="row-actions center">
-                      {isActionAllowed(userActionAnalysis, 'approve', '0') && (
+                      {userBalance !== null && userBalance > BigInt(0) && (
                         <button 
                           className="btn-md success" 
                           onClick={() => openModal('approve')}
                         >
-                          Approve
+                          {userAllowance && userAllowance > BigInt(0) ? 'Set Allowance' : 'Approve'}
                         </button>
                       )}
-                      {isActionAllowed(userActionAnalysis, 'deposit', '0') && (
+                      {(userBalance !== null && userBalance > BigInt(0)) || (userAllowance !== null && userAllowance > BigInt(0)) ? (
                         <button 
                           className="btn-md success" 
                           onClick={() => openModal('deposit')}
                         >
                           Deposit
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 )}
@@ -995,7 +1011,7 @@ export default function Pool() {
       </div>
 
       {/* Action Modal */}
-      <ActionModal
+      <PoolActionModal
         isOpen={isModalOpen}
         onClose={closeModal}
         action={currentAction}
@@ -1003,10 +1019,12 @@ export default function Pool() {
         tokenDecimals={poolData?.decimals}
         availableBalance={getAvailableBalance()}
         availableFees={getAvailableFees()}
+        currentAllowance={userAllowance ? ethers.formatUnits(userAllowance, poolData?.decimals || 18) : '0'}
         testerBalance={testerBalance}
         currentVoteFee={userPosition?.voteSelection ? userPosition.voteSelection / 100 : 0}
         feeGovernance={feeGovernance}
         onConfirm={handleModalConfirm}
+        onSwitchToApprove={handleSwitchToApprove}
         isLoading={isTransactionLoading}
       />
     </div>

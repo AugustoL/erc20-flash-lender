@@ -99,7 +99,7 @@ export function formatTokenAmount(
   // For decimal tokens, use appropriate decimal formatting
   return Number(formatted).toLocaleString(undefined, {
     minimumFractionDigits: 0,
-    maximumFractionDigits: Math.min(decimals, 8), // Cap at 8 decimal places for display
+    maximumFractionDigits: Math.min(decimals, 4), // Cap at 4 decimal places for display
     ...options
   });
 }

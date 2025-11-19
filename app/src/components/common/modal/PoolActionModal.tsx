@@ -1,25 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import '../../../styles/styles.css';
-import { ActionType, WithdrawType, ActionModalProps } from '../../../types';
+import { ActionType, WithdrawType, PoolActionModalProps } from '../../../types';
 import { getNetworkContracts } from '../../../config';
 import { useChainId } from 'wagmi';
 import { formatTokenAmount } from '../../../utils';
+import BaseModal from './BaseModal';
 
 // Re-export types for backward compatibility
 export type { ActionType, WithdrawType };
 
-const ActionModal: React.FC<ActionModalProps> = ({
+const PoolActionModal: React.FC<PoolActionModalProps> = ({
   isOpen,
   onClose,
   action,
   tokenSymbol = 'TOKEN',
   availableBalance = '0',
   availableFees = '0',
+  currentAllowance = '0',
   testerBalance,
   currentVoteFee = 0,
   feeGovernance = [],
   onConfirm,
+  onSwitchToApprove,
   isLoading = false
 }) => {
   const [amount, setAmount] = useState('');
@@ -77,7 +80,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
       case 'vote':
         return `Vote for LP Fee`;
       case 'approve':
-        return `Approve ${tokenSymbol}`;
+        return `Set Allowance for ${tokenSymbol}`;
       case 'testLoan':
         return `Test Flash Loan (${tokenSymbol})`;
       default:
@@ -94,7 +97,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
       case 'vote':
         return 'Vote for your preferred LP fee rate. Your vote weight is proportional to your shares in the pool. The fee can be between 0% and 5% with up to 2 decimal places.';
       case 'approve':
-        return `Approve the flash lender contract to spend your ${tokenSymbol} tokens. Enter the amount you want to allow the contract to spend.`;
+        return `Set the allowance for the flash lender contract to spend your ${tokenSymbol} tokens. You can set any amount, use "Unlimited" for maximum convenience, or set to zero to revoke approval.`;
       case 'testLoan':
         return `Execute a test flash loan for ${tokenSymbol}. You'll specify the amount to borrow and an extra percentage to return in addition to the owed fee to validate end-to-end repayment. 
         Make sure the ${flashLenderTesterAddress} contract has enough tokens to repay the loan plus fees.`;
@@ -133,6 +136,12 @@ const ActionModal: React.FC<ActionModalProps> = ({
   };
 
   const validateAmount = (value: string): boolean => {
+    // For approve actions, allow zero to revoke approval
+    if (action === 'approve' && (value === '0' || value === '')) {
+      setError('');
+      return true;
+    }
+
     if (!value || value === '0') {
       setError('Amount is required');
       return false;
@@ -291,19 +300,15 @@ const ActionModal: React.FC<ActionModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">{getModalTitle()}</h3>
-          <button className="modal-close" onClick={onClose} disabled={isLoading}>
-            ×
-          </button>
-        </div>
-
-        <div className="modal-body">
-          <p className="form-help action-modal-help-text">
-            {getModalDescription()}
-          </p>
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={getModalTitle()}
+      isLoading={isLoading}
+    >
+      <p className="form-help action-modal-help-text">
+        {getModalDescription()}
+      </p>
 
           {action !== 'vote' ? (
             <>
@@ -363,14 +368,24 @@ const ActionModal: React.FC<ActionModalProps> = ({
                         MAX
                       </button>
                       {action === 'approve' && (
-                        <button
-                          type="button"
-                          className="btn-xs outline action-modal-unlimited-button"
-                          onClick={handleInfiniteClick}
-                          disabled={isLoading}
-                        >
-                          Unlimited
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className="btn-xs outline"
+                            onClick={handleInfiniteClick}
+                            disabled={isLoading}
+                          >
+                            Unlimited
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-xs outline"
+                            onClick={() => { setAmount('0'); setError(''); }}
+                            disabled={isLoading}
+                          >
+                            Zero
+                          </button>
+                        </>
                       )}
                     </div>
                   )}
@@ -386,6 +401,16 @@ const ActionModal: React.FC<ActionModalProps> = ({
                         (availableBalance && availableBalance !== '0' ? `${formatTokenAmount(availableBalance)} ${tokenSymbol}` : `0 ${tokenSymbol}`)
                       }
                     </span>
+                    {(action === 'deposit' || action === 'approve') && currentAllowance && (
+                      <div className="available-balance">
+                        Current Allowance: <span className="available-amount">
+                          {currentAllowance === ethers.MaxUint256.toString() || parseFloat(currentAllowance) >= parseFloat(availableBalance) * 1000 
+                            ? 'Unlimited' 
+                            : `${formatTokenAmount(currentAllowance)} ${tokenSymbol}`
+                          }
+                        </span>
+                      </div>
+                    )}
                     {(action === 'deposit' || action === 'approve') && (!availableBalance || availableBalance === '0') && (
                       <div className="action-modal-balance-note">
                         Note: Make sure you have {tokenSymbol} tokens in your wallet
@@ -495,17 +520,17 @@ const ActionModal: React.FC<ActionModalProps> = ({
                 id="use-executor-factory"
                 type="checkbox"
                 className="h-4 w-4"
-                checked={useExecutorFactory}
-                onChange={(e) => setUseExecutorFactory(e.target.checked)}
-              />
-              <label htmlFor="use-executor-factory" className="ml-2 text-sm">
-                Use executor factory
-              </label>
-            </div>
-          )}
-        </div>
+              checked={useExecutorFactory}
+              onChange={(e) => setUseExecutorFactory(e.target.checked)}
+            />
+            <label htmlFor="use-executor-factory" className="ml-2 text-sm">
+              Use executor factory
+            </label>
+          </div>
+        )}
 
-        <div className="modal-footer">
+        {/* Modal Actions */}
+        <div className="modal-actions">
           <button
             className="btn-md outline"
             onClick={onClose}
@@ -513,6 +538,15 @@ const ActionModal: React.FC<ActionModalProps> = ({
           >
             Cancel
           </button>
+          {action === 'deposit' && onSwitchToApprove && (
+            <button
+              className="btn-md secondary"
+              onClick={onSwitchToApprove}
+              disabled={isLoading}
+            >
+              Set Allowance
+            </button>
+          )}
           <button
             className="btn-md primary"
             onClick={handleConfirm}
@@ -521,9 +555,8 @@ const ActionModal: React.FC<ActionModalProps> = ({
             {isLoading ? 'Processing...' : 'Confirm'}
           </button>
         </div>
-      </div>
-    </div>
+    </BaseModal>
   );
 };
 
-export default ActionModal;
+export default PoolActionModal;

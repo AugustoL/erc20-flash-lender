@@ -4,6 +4,7 @@ import { useAccount } from 'wagmi';
 import { useDebouncedTokenInfo } from '../../../hooks/useTokenInfo';
 import { getERC20FlashLenderAddress } from '../../../config';
 import { safeFormatUnits, safeParseUnits } from '../../../utils/helpers';
+import BaseModal from './BaseModal';
 import '../../../styles/styles.css';
 
 interface TokenOption {
@@ -48,6 +49,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
   const [isCheckingApproval, setIsCheckingApproval] = useState(false);
   const [isCheckingBalance, setIsCheckingBalance] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [actionMode, setActionMode] = useState<'none' | 'approve' | 'deposit'>('none');
 
   const { tokenInfo, isLoading: isValidatingToken, error: tokenError, validateToken, clearToken } = 
     useDebouncedTokenInfo(provider, 500);
@@ -61,6 +63,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
       setAllowance(BigInt(0));
       setBalance(BigInt(0));
       setShowDropdown(false);
+      setActionMode('none');
       clearToken();
     }
   }, [isOpen, selectedTokenAddress, clearToken]);
@@ -161,6 +164,10 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
 
     try {
       const parsedAmount = parseAmount(value, tokenInfo?.decimals || 18);
+      // For approve mode, allow zero to revoke approval
+      if (actionMode === 'approve' && parsedAmount === BigInt(0)) {
+        return null;
+      }
       if (parsedAmount <= 0) {
         return 'Amount must be greater than 0';
       }
@@ -244,6 +251,7 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
 
     if (onApprove) {
       onApprove(tokenInfo.address, amount);
+      setActionMode('none');
     }
   };
 
@@ -299,29 +307,23 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">
-            {existingTokens.length > 0 ? 'Deposit Token' : 'Add New Token'}
-          </h3>
-          <button className="modal-close" onClick={onClose} disabled={isLoading}>
-            ×
-          </button>
-        </div>
-        
-        <div className="modal-body">
-          <p className="form-help token-modal-help-text">
-            {existingTokens.length > 0 
-              ? 'Select an existing token from the dropdown or enter a new ERC20 token address to create a flash loan pool.'
-              : 'Deposit a new ERC20 token to create a flash loan pool. Enter the token contract address and the amount you want to deposit.'
-            }
-            {needsApproval() && (
-              <><br /><br />
-              <strong>⚠️ Approval Required:</strong> You need to approve the contract to spend your tokens before you can deposit.
-              </>
-            )}
-          </p>
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={existingTokens.length > 0 ? 'Deposit Token' : 'Add New Token'}
+      isLoading={isLoading}
+    >
+      <p className="form-help token-modal-help-text">
+        {existingTokens.length > 0 
+          ? 'Select an existing token from the dropdown or enter a new ERC20 token address to create a flash loan pool.'
+          : 'Deposit a new ERC20 token to create a flash loan pool. Enter the token contract address and the amount you want to deposit.'
+        }
+        {needsApproval() && (
+          <><br /><br />
+          <strong>⚠️ Approval Required:</strong> You need to approve the contract to spend your tokens before you can deposit.
+          </>
+        )}
+      </p>
 
           {/* Token Address Input */}
           <div className="form-group">
@@ -390,37 +392,10 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
             
             {/* Token Validation Status */}
             {getTokenStatusDisplay()}
-          </div>
-
-          {/* Amount Input - Only enabled when token is valid */}
-          <div className="form-group">
-            <label className="form-label" htmlFor="amount">
-              Amount {tokenInfo?.symbol ? `(${tokenInfo.symbol})` : ''}
-            </label>
-            <div className="input-group">
-              <input
-                id="amount"
-                type="text"
-                value={amount == MaxUint256.toString() ? 'Unlimited' : amount}
-                onChange={handleAmountChange}
-                placeholder={tokenInfo?.isValid ? `Enter ${tokenInfo.symbol} amount` : 'Select a token first'}
-                className="form-input"
-                disabled={!tokenInfo?.isValid || isLoading}
-              />
-              <div className="input-group-append">
-                <button 
-                  type="button" 
-                  className="btn-xs primary"
-                  onClick={handleSetMaxAmount}
-                  disabled={!tokenInfo?.isValid || isLoading}
-                >
-                  MAX
-                </button>
-              </div>
-            </div>
+            
+            {/* Balance Information - Show immediately when token is valid */}
             {tokenInfo?.isValid && (
               <div className="form-help">
-                Minimum deposit: 100M wei (0.0000001 {tokenInfo.symbol})
                 {isCheckingBalance ? (
                   <div className="token-checking-approval">
                     🔄 Checking balance...
@@ -430,31 +405,109 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
                     💰 Your balance: {safeFormatUnits(balance, tokenInfo.decimals)} {tokenInfo.symbol}
                   </div>
                 )}
-                {allowance > BigInt(0) && (
+                {isCheckingApproval ? (
+                  <div className="token-checking-approval">
+                    🔄 Checking approval status...
+                  </div>
+                ) : allowance > BigInt(0) ? (
                   <div className="token-allowance-display">
                     ✅ Current allowance: {
                     allowance == MaxUint256 ? 'Unlimited' : safeFormatUnits(allowance, tokenInfo.decimals)
                     } {tokenInfo.symbol}
                   </div>
-                )}
-                {isCheckingApproval && (
-                  <div className="token-checking-approval">
-                    🔄 Checking approval status...
+                ) : (
+                  <div className="token-allowance-display">
+                    ⚠️ No allowance set - You need to approve before depositing
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          {/* Error Display */}
-          {error && (
-            <div className="form-error token-form-error-margin">
-              {error}
+          {/* Amount Input - Only shown when in approve or deposit mode */}
+          {actionMode !== 'none' && (
+            <div className="form-group">
+              <label className="form-label" htmlFor="amount">
+                {actionMode === 'approve' ? 'Allowance Amount' : 'Deposit Amount'} {tokenInfo?.symbol ? `(${tokenInfo.symbol})` : ''}
+              </label>
+              <div className="input-group">
+                <input
+                  id="amount"
+                  type="text"
+                  value={amount == MaxUint256.toString() ? 'Unlimited' : amount}
+                  onChange={handleAmountChange}
+                  placeholder={tokenInfo?.isValid ? `Enter ${tokenInfo.symbol} amount` : 'Select a token first'}
+                  className="form-input"
+                  disabled={!tokenInfo?.isValid || isLoading}
+                />
+                <div className="input-group-append">
+                  {actionMode === 'deposit' ? (
+                    <button 
+                      type="button" 
+                      className="btn-xs primary"
+                      onClick={handleSetMaxAmount}
+                      disabled={!tokenInfo?.isValid || isLoading}
+                    >
+                      MAX
+                    </button>
+                  ) : (
+                    <>
+                      <button 
+                        type="button" 
+                        className="btn-xs outline"
+                        onClick={handleSetMaxAmount}
+                        disabled={!tokenInfo?.isValid || isLoading}
+                      >
+                        MAX
+                      </button>
+                      <button 
+                        type="button" 
+                        className="btn-xs outline"
+                        onClick={() => { setAmount(MaxUint256.toString()); setError(''); }}
+                        disabled={!tokenInfo?.isValid || isLoading}
+                      >
+                        Unlimited
+                      </button>
+                      <button 
+                        type="button" 
+                        className="btn-xs outline"
+                        onClick={() => { setAmount('0'); setError(''); }}
+                        disabled={!tokenInfo?.isValid || isLoading}
+                      >
+                      Zero
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
-          )}
-        </div>
+            {tokenInfo?.isValid && (
+              <div className="form-help">
+                {actionMode === 'deposit' 
+                  ? `Minimum deposit: 100M wei (0.0000001 ${tokenInfo.symbol})`
+                  : `Set allowance to control how much the contract can spend. Use "Unlimited" for convenience or "Zero" to revoke.`
+                }
+              </div>
+            )}
+          </div>
+          )}          {/* Error Display */}
+        {error && (
+          <div className="form-error token-form-error-margin">
+            {error}
+          </div>
+        )}
 
-        <div className="modal-footer">
+        {/* Modal Actions */}
+        <div className="modal-actions">
+          {actionMode !== 'none' && (
+            <button 
+              className="btn-md outline" 
+              onClick={() => { setActionMode('none'); setAmount(''); setError(''); }}
+              disabled={isLoading}
+            >
+              Back
+            </button>
+          )}
+          
           <button 
             className="btn-md secondary" 
             onClick={onClose}
@@ -463,26 +516,29 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
             Cancel
           </button>
           
-          {needsApproval() ? (
-            <button 
-              className="btn-md primary" 
-              onClick={handleApprove}
-              disabled={!isFormValid() || isLoading || !onApprove}
-            >
-              {isLoading ? (
-                <>
-                  <div className="loading-spinner"></div>
-                  Processing...
-                </>
-              ) : (
-                `Approve ${tokenInfo?.symbol || 'Token'}`
-              )}
-            </button>
+          {actionMode === 'none' ? (
+            <>
+              <button 
+                className="btn-md outline" 
+                onClick={() => { setActionMode('approve'); setAmount(''); setError(''); }}
+                disabled={!tokenInfo?.isValid || isLoading}
+              >
+                Approve
+              </button>
+              <button 
+                className="btn-md primary" 
+                onClick={() => { setActionMode('deposit'); setAmount(''); setError(''); }}
+                disabled={!tokenInfo?.isValid || isLoading || allowance === BigInt(0)}
+                title={allowance === BigInt(0) ? 'You need to approve before depositing' : ''}
+              >
+                Deposit
+              </button>
+            </>
           ) : (
             <button 
               className="btn-md primary" 
-              onClick={handleConfirm}
-              disabled={!isFormValid() || isLoading}
+              onClick={actionMode === 'approve' ? handleApprove : handleConfirm}
+              disabled={!isFormValid() || isLoading || (actionMode === 'approve' && !onApprove)}
             >
               {isLoading ? (
                 <>
@@ -490,14 +546,11 @@ const NewTokenDepositModal: React.FC<NewTokenDepositModalProps> = ({
                   Processing...
                 </>
               ) : (
-                `Deposit ${tokenInfo?.symbol || 'Token'}`
+                `Confirm ${actionMode === 'approve' ? 'Approval' : 'Deposit'}`
               )}
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </BaseModal>
   );
-};
-
-export default NewTokenDepositModal;
+};export default NewTokenDepositModal;

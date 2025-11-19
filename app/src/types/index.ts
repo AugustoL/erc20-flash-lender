@@ -200,7 +200,7 @@ export type WithdrawType = 'all' | 'fees';
 /**
  * Action modal component props
  */
-export interface ActionModalProps {
+export interface PoolActionModalProps {
   isOpen: boolean;
   onClose: () => void;
   action: ActionType;
@@ -208,10 +208,12 @@ export interface ActionModalProps {
   tokenDecimals?: number;
   availableBalance?: string; // For deposit: wallet balance, for withdraw: withdrawable amount
   availableFees?: string; // For withdraw fees only option
+  currentAllowance?: string; // Current allowance for approve/deposit actions
   testerBalance?: string;
   currentVoteFee?: number; // Current user's vote selection for fee
   feeGovernance?: FeeVote[]; // Available fee options for voting
   onConfirm: (amount: string, feePercentage?: number, useExecutorFactory?: boolean, withdrawType?: WithdrawType) => void;
+  onSwitchToApprove?: () => void; // Callback to switch from deposit to approve mode
   isLoading?: boolean;
 }
 
