@@ -35,20 +35,20 @@
         {
           "name": "ERC20FlashLender",
           "version": "1.0.0",
-          "address": "0x2bEd5052FcC9E59096ADbbA48E71aCB95969C5D5",
-          "fromBlock": 9487003
+          "address": "0x2384a819a099a95b5ef41688dAc1EDCF6B35299C",
+          "fromBlock": 9663042
         },
         {
           "name": "ERC20FlashLoanExecutorFactory",
           "version": "1.0.0",
-          "address": "0xe1e6BeF33732370d23aee7f366A950c95F2c2903",
-          "fromBlock": 9487003
+          "address": "0xB23b6387bAc7046A460a138275fb1269B1f0abEe",
+          "fromBlock": 9663042
         },
         {
           "name": "FlashLoanTester",
           "version": "1.0.0-local",
-          "address": "0xa58c7bd504a8d301315e30fF02DD01Ef5b122bDc",
-          "fromBlock": 9487003
+          "address": "0x1eca542a73459dBdda8fd743f10A3e02807A986b",
+          "fromBlock": 9663042
         }
       ]
     }
