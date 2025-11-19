@@ -11,6 +11,7 @@ import {
   UseFlashLenderConfig,
   PoolData,
   UserPositionData,
+  UserAction,
 } from '../types';
 
 export function useFlashLender({
@@ -35,6 +36,10 @@ export function useFlashLender({
   // State
   const [pools, setPools] = useState<PoolData[]>([]);
   const [userPositions, setUserPositions] = useState<UserPositionData[]>([]);
+  // Action lists for a selected pool (moved from components)
+  const [userActions, setUserActions] = useState<UserAction[]>([]);
+  const [poolActions, setPoolActions] = useState<UserAction[]>([]);
+  const [isLoadingActions, setIsLoadingActions] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -143,6 +148,29 @@ export function useFlashLender({
       setError(err as Error);
     }
   }, [userAddress, service, transformUserPositions]);
+
+  // Load recent actions (deposits/withdrawals/flashloans/votes) for a single token
+  const loadActions = useCallback(async (tokenAddress: string) => {
+    if (!tokenAddress || !service) return;
+    setIsLoadingActions(true);
+    try {
+      const providerInstance = provider || (service as any).providerInstance;
+      const currentBlock = await providerInstance.getBlockNumber();
+      const fromBlock = Math.max(0, currentBlock - 5000);
+
+      const [userActionsData, poolData] = await Promise.all([
+        userAddress ? service.getUserActions(tokenAddress, userAddress, fromBlock) : Promise.resolve([]),
+        service.getPoolStatistics(tokenAddress, fromBlock)
+      ]);
+
+      setUserActions(userActionsData || []);
+      setPoolActions((poolData && poolData.poolUsersActions) ? poolData.poolUsersActions.slice(0, 20) : []);
+    } catch (err) {
+      console.error('Error loading actions for token', tokenAddress, err);
+    } finally {
+      setIsLoadingActions(false);
+    }
+  }, [service, userAddress, provider]);
 
   // Main fetch function
   const fetchData = useCallback(async () => {
@@ -490,11 +518,60 @@ export function useFlashLender({
     return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, fetchData]);
 
+  // Wire contract event listeners to automatically refresh on on-chain events
+  useEffect(() => {
+    if (!service) return;
+
+    const callbacks = {
+      onDeposit: (user: string, token: string) => {
+        try {
+          service.clearCache();
+        } catch (e) {}
+        fetchData().catch(err => console.warn('fetchData failed after Deposit event:', err));
+      },
+      onWithdraw: (user: string, token: string) => {
+        try {
+          service.clearCache();
+        } catch (e) {}
+        fetchData().catch(err => console.warn('fetchData failed after Withdraw event:', err));
+      },
+      onFlashLoan: (borrower: string, token: string) => {
+        try {
+          service.clearCache();
+        } catch (e) {}
+        fetchData().catch(err => console.warn('fetchData failed after FlashLoan event:', err));
+      },
+      onFeeChange: (token: string) => {
+        try {
+          service.clearCache();
+        } catch (e) {}
+        fetchData().catch(err => console.warn('fetchData failed after FeeChange event:', err));
+      }
+    };
+
+    try {
+      service.setupEventListeners(callbacks as any);
+    } catch (err) {
+      console.warn('Failed to setup event listeners:', err);
+    }
+
+    return () => {
+      try {
+        (service as any).removeEventListeners && (service as any).removeEventListeners();
+      } catch (err) {
+        // ignore
+      }
+    };
+  }, [service, fetchData]);
+
   return {
     // Data
     pools,
     userPositions,
+    userActions,
+    poolActions,
     isLoading,
+    isLoadingActions,
     error,
     lastUpdate,
     
@@ -510,6 +587,8 @@ export function useFlashLender({
     
     // Utilities
     refresh: fetchData,
-    clearCache: () => service?.clearCache()
+    clearCache: () => service?.clearCache(),
+    // Actions loader
+    loadActions,
   };
 }
