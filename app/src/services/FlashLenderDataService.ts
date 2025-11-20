@@ -686,6 +686,22 @@ export class FlashLenderDataService {
     }
   }
 
+  /**
+   * Remove listeners previously attached by setupEventListeners
+   */
+  removeEventListeners() {
+    try {
+      // Remove only the events we attach in setupEventListeners
+      this.contract.removeAllListeners && this.contract.removeAllListeners('Deposit');
+      this.contract.removeAllListeners && this.contract.removeAllListeners('Withdraw');
+      this.contract.removeAllListeners && this.contract.removeAllListeners('FlashLoan');
+      this.contract.removeAllListeners && this.contract.removeAllListeners('LPFeeChangeExecuted');
+      // Keep this idempotent and swallow errors
+    } catch (err) {
+      console.warn('Failed to remove contract listeners:', err);
+    }
+  }
+
   // ==================== HELPER METHODS ====================
   
   /**

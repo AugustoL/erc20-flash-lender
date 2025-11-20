@@ -40,11 +40,16 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = React.m
     setNotifications([]);
   }, []);
 
+  const addTxSentNotification = useCallback((txHash: string) => {
+    addNotification(`Waiting until ${txHash} be included`, 'success', 10000);
+  }, [addNotification]);
+
   const value = useMemo(() => ({
     notifications,
     addNotification,
     removeNotification,
     clearAllNotifications,
+    addTxSentNotification,
   }), [notifications, addNotification, removeNotification, clearAllNotifications]);
 
   return (

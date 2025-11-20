@@ -81,6 +81,7 @@ const Navbar = () => {
                 smallScreen: 'avatar',
                 largeScreen: 'full',
               }}
+              showBalance={false}
             />
           </li>
         </ul>

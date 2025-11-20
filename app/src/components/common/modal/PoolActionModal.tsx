@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ethers } from 'ethers';
 import '../../../styles/styles.css';
 import { ActionType, WithdrawType, PoolActionModalProps } from '../../../types';
@@ -23,7 +23,7 @@ const PoolActionModal: React.FC<PoolActionModalProps> = ({
   feeGovernance = [],
   onConfirm,
   onSwitchToApprove,
-  isLoading = false
+  isLoading = false,
 }) => {
   const [amount, setAmount] = useState('');
   const [feePercentage, setFeePercentage] = useState(currentVoteFee.toString());
@@ -31,6 +31,7 @@ const PoolActionModal: React.FC<PoolActionModalProps> = ({
   const [useExecutorFactory, setUseExecutorFactory] = useState<boolean>(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [error, setError] = useState('');
+  const confirmBtnRef = useRef<HTMLButtonElement | null>(null);
 
   const chainId = useChainId();
   const flashLenderTesterAddress = getNetworkContracts(chainId).find(c => c.name === 'FlashLoanTester')?.address || '';
@@ -67,7 +68,6 @@ const PoolActionModal: React.FC<PoolActionModalProps> = ({
     // Explicitly return undefined if not showing dropdown
     return undefined;
   }, [showDropdown]);
-
 
   if (!isOpen) return null;
 
@@ -548,15 +548,26 @@ const PoolActionModal: React.FC<PoolActionModalProps> = ({
             </button>
           )}
           <button
-            className="btn-md primary"
+            className={`btn-md primary ${isLoading ? 'loading' : ''}`}
             onClick={handleConfirm}
             disabled={isConfirmDisabled()}
+            ref={confirmBtnRef}
           >
-            {isLoading ? 'Processing...' : 'Confirm'}
+            <span className="btn-text">Confirm</span>
+            <span className="button-spinner" aria-hidden={!isLoading}>
+              {isLoading && <Spinner />}
+            </span>
           </button>
         </div>
     </BaseModal>
   );
 };
 
+const Spinner = () => (
+  <div className="modal-loading-spinner" role="status" aria-live="polite" aria-label="Loading">
+    <svg className="spinner-ring" viewBox="0 0 50 50">
+      <circle className="spinner-path" cx="25" cy="25" r="20" fill="none" />
+    </svg>
+  </div>
+);
 export default PoolActionModal;

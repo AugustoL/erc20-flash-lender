@@ -34,12 +34,11 @@ export default function Pool() {
   const { data: walletClient } = useWalletClient();
   const [poolData, setPoolData] = useState<PoolData | null>(null);
   const [userPosition, setUserPosition] = useState<UserPositionData | null>(null);
-  const [userActions, setUserActions] = useState<UserAction[]>([]);
-  const [poolActions, setPoolActions] = useState<UserAction[]>([]);
+  // userActions and poolActions moved to the hook
   const [poolStatistics, setPoolStatistics] = useState<PoolStatistics | null>(null);
   const [feeGovernance, setFeeGovernance] = useState<FeeVote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingActions, setIsLoadingActions] = useState(false);
+  
   const [isLoadingFeeChange, setIsLoadingFeeChange] = useState(false);
   const [isLoadingProposal, setIsLoadingProposal] = useState(false);
   const [proposalStatus, setProposalStatus] = useState<{ exists: boolean; canExecute: boolean; blocksRemaining: number } | null>(null);
@@ -82,6 +81,10 @@ export default function Pool() {
     pools,
     userPositions,
     isLoading: isHookLoading,
+    userActions,
+    poolActions,
+    isLoadingActions,
+    loadActions,
     refresh,
     clearCache,
     deposit: hookDeposit,
@@ -175,12 +178,11 @@ export default function Pool() {
     fetchTesterBalance();
   }, [service, tokenAddress, poolData?.decimals, chainId]);
 
-  // Load user actions and pool activity
+  // Load user actions and pool activity (now delegated to hook)
   useEffect(() => {
     if (!tokenAddress || !service) return;
 
-    const loadActions = async () => {
-      setIsLoadingActions(true);
+    const load = async () => {
       try {
         // Get more blocks for better activity history (last 5000 blocks or last week)
         const currentBlock = await provider.getBlockNumber();
@@ -194,9 +196,9 @@ export default function Pool() {
           // Fee governance data
           service.getGovernanceData()
         ]);
-
-        setUserActions(userActionsData);
-        setPoolActions(poolData.poolUsersActions.slice(0, 20)); // Limit to 20 most recent
+        loadActions(tokenAddress); // Update hook's actions
+        // setUserActions(userActionsData);
+        // setPoolActions(poolData.poolUsersActions.slice(0, 20)); // Limit to 20 most recent
         setPoolStatistics(poolData);
 
         // Process governance data for this specific token
@@ -233,13 +235,11 @@ export default function Pool() {
         }
       } catch (error) {
         console.error('Error loading actions:', error);
-      } finally {
-        setIsLoadingActions(false);
       }
     };
 
-    loadActions();
-  }, [tokenAddress, address, service, provider]);
+    load();
+  }, [tokenAddress, address, service, provider, loadActions]);
 
   // Check proposal status when user position changes
   useEffect(() => {
@@ -530,6 +530,7 @@ export default function Pool() {
         }
       }
       
+      await loadActions(tokenAddress);
       closeModal();
       
       // Clear cache and wait a moment for blockchain state to propagate
@@ -537,7 +538,7 @@ export default function Pool() {
       await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
       
       // Refresh data after successful transaction
-      await refresh();
+      // await refresh();
       // Also refresh wallet balance to ensure UI is up to date
     } catch (error) {
       console.error('Transaction failed:', error);

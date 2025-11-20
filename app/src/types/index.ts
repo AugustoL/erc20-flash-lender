@@ -237,6 +237,7 @@ export interface NotificationContextType {
   addNotification: (message: string, type: Notification['type'], duration?: number) => void;
   removeNotification: (id: string) => void;
   clearAllNotifications: () => void;
+  addTxSentNotification: (txHash: string) => void;
 }
 
 /**
